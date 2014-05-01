@@ -7,6 +7,8 @@ protocol e.g. buspirates via OpenOCD. Memory/register settings are
 currently hard-coded for ARMSTM32f2xx devices. But it should be no
 problem to adapt to other HW devices.
 
+possible uses: on-device unit testing, fuzzing, reverse engineering.
+
 ** depends
 #+BEGIN_EXAMPLE
 pip install pyelftools pyserial
