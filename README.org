@@ -22,7 +22,6 @@ rsp = RSP('/dev/ttyACM0', workarea=0x20010000, verbose=True)
 The most interesting function is RSP.call():
 
 #+BEGIN_EXAMPLE python
-RSP(sys.argv[1], workarea=0x20019000, verbose=True)
 def call(self, file_prefix, start='test', finish='finish', results='result', res_size=10, verbose=True, verify=True):
 #+END_EXAMPLE
 
