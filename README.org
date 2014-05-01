@@ -32,16 +32,12 @@ def call(self,
          verify=True):
 #+END_EXAMPLE
 
-1. Loads the '.bin' file given by file_prefix into the device at the
-workarea of the device.
-2. If verify is set, the workarea is read out and compared to the
-original '.bin' file.
-3. Using the '.elf' file it sets a breakpoint on the function
-specified by finish,
+1. Loads the '.bin' file given by file_prefix into the device at the workarea of the device.
+2. If verify is set, the workarea is read out and compared to the original '.bin' file.
+3. Using the '.elf' file it sets a breakpoint on the function specified by finish,
 4. and starts execution at the function specified by start.
 5. After the breakpoint of finish is hit, it removes it,
-6. and if the symbol specified in results exists, it returns the
-memory pointed by it limited by the res_size parameter.
+6. and if the symbol specified in results exists, it returns the memory pointed by it limited by the res_size parameter.
 
 ** Example session
 #+BEGIN_EXAMPLE
