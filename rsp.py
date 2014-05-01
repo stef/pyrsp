@@ -16,20 +16,26 @@
 
 # (C) 2014 by Stefan Marsiske, <s@ctrlc.hu>
 
-import sys, serial, elf
+import serial, elf
 
-def encode(data):
+def pack(data):
     for a, b in [(x, chr(ord(x) ^ 0x20)) for x in ['}','*','#','$']]:
         data = data.replace(a,'}%s' % b)
     return "$%s#%02X" % (data, (sum(ord(c) for c in data) % 256))
 
-def decode(pkt):
+def unpack(pkt):
     if pkt[0]!='$' or pkt[-3]!='#':
         raise ValueError('bad packet')
     if (sum(ord(c) for c in pkt[1:-3]) % 256) != int(pkt[-2:],16):
         raise ValueError('bad checksum')
     pkt = pkt[1:-3]
     return pkt
+
+def unhex(data):
+    return ''.join(chr(int(x,16)) for x in split_by_n(data,2))
+
+def switch_endian(data):
+    return ''.join(reversed(list(split_by_n( data ,2))))
 
 def split_by_n( seq, n ):
     """A generator to divide a sequence into chunks of n units.
@@ -39,7 +45,9 @@ def split_by_n( seq, n ):
         seq = seq[n:]
 
 class RSP:
-    def __init__(self, port):
+    def __init__(self, port, workarea=0x20000000, verbose=False):
+        self.workarea = workarea
+        self.verbose = verbose
         self.port = serial.Serial(port, 115200, timeout=1)
         self.registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "xpsr", "msp", "psp", "special"]
         pkt = self.readpkt()
@@ -52,13 +60,13 @@ class RSP:
         # attach
         self.attach()
 
-        #rsp.fetch('qXfer:features:read:target.xml:0,3fb')
-        #rsp.fetch('Xfer:features:read:target.xml:3cf,3fb')
+        #self.fetch('qXfer:features:read:target.xml:0,3fb')
+        #self.fetch('Xfer:features:read:target.xml:3cf,3fb')
         #self.fetch('qXfer:memory-map:read::0,3fb')
         #self.fetch('qXfer:memory-map:read::364,3fb')
 
         # test write
-        self.fetchOK('X20019000,0')
+        self.fetchOK('X%08x,0' % self.workarea)
 
         # reset workspace area
         self.store('\x00' * 2048)
@@ -68,14 +76,14 @@ class RSP:
             raise ValueError('cannot erase work area')
 
     def send(self, data, retries=50):
-        self.port.write(encode(data))
+        self.port.write(pack(data))
         res = None
         while not res:
             res = self.port.read()
         discards = []
         while res!='+' and retries>0:
             discards.append(res)
-            self.port.write(encode(data))
+            self.port.write(pack(data))
             retries-=1
             res = self.port.read()
         if len(discards)>0: print 'send discards', discards
@@ -96,7 +104,7 @@ class RSP:
                 res.append(self.port.read())
                 res.append(self.port.read())
                 try:
-                    res=decode(''.join(res))
+                    res=unpack(''.join(res))
                 except:
                     self.port.write('-')
                     res=[]
@@ -104,13 +112,17 @@ class RSP:
                 self.port.write('+')
                 return res
 
-    def store(self, data, addr=0x20019000):
+    def store(self, data, addr=None):
+        if addr==None:
+            addr=self.workarea
         for pkt in split_by_n(data, 400):
             pktlen = len(pkt)
             self.fetchOK('X%x,%x:%s' % (addr, pktlen, pkt))
             addr+=pktlen
 
-    def dump(self, size, addr = 0x20019000):
+    def dump(self, size, addr = None):
+        if addr==None:
+            addr=self.workarea
         rd = []
         i=0
         bsize = 256
@@ -119,7 +131,7 @@ class RSP:
             self.send('m%x,%x' % (addr+i, bsize))
             pkt=self.readpkt()
             #print pkt
-            rd.append(''.join(chr(int(x,16)) for x in split_by_n(pkt,2)))
+            rd.append(unhex(pkt))
             i+=bsize
         return ''.join(rd)
 
@@ -136,55 +148,107 @@ class RSP:
             self.regs[reg]=val
         if isinstance(val, int):
             self.regs[reg]='%x' % val
-        self.fetchOK("G%s" % ''.join([''.join(reversed(list(split_by_n(self.regs[r],2)))) for r in self.registers]))
+        self.fetchOK("G%s" % ''.join([switch_endian(self.regs[r]) for r in self.registers]))
 
     def refresh_regs(self):
         self.send('g')
-        self.regs=dict(zip(self.registers,(''.join(reversed(list(split_by_n(reg,2)))) for reg in split_by_n(self.readpkt(),8))))
+        self.regs=dict(zip(self.registers,(switch_endian(reg) for reg in split_by_n(self.readpkt(),8))))
 
     def dump_regs(self):
         self.refresh_regs()
-        for r in self.registers:
-            print "%4s 0x%s" % (r, self.regs[r])
+        print ' '.join(["%8s" % r for r in self.registers[:-1]])
+        print ' '.join(["%s" % self.regs[r] for r in self.registers[:-1]])
 
-    def attach(self, id='1', verbose=False):
+    def attach(self, id='1'):
         self.send('qRcmd,737764705f7363616e')
         pkt=self.readpkt()
         while pkt!='OK':
             if pkt[0]!='O':
                 raise ValueError('not O')
             pkt=self.readpkt()
-            if verbose:
-                print ''.join(chr(int(x,16)) for x in split_by_n(pkt[1:-1],2))
+            if self.verbose:
+                print unhex(pkt[1:-1])
         self.fetchOK('vAttach;%s' % id,'T05')
 
-# example loads a test.bin to 0x20019000 and hands over control to the
-# function `test', needs test.bin and test.elf to work.
-# argv[1] should be the file to the debugger device, e.g: /dev/ttyACM0
+    def call(self, file_prefix, start='test', finish='finish', results='result', res_size=10, verify=True):
+        """
+        1. Loads the '.bin' file given by file_prefix into the device
+           at the workarea of the device.
+        2. If verify is set, the workarea is read out and compared to
+           the original '.bin' file.
+        3. Using the '.elf' file it sets a breakpoint on the function
+           specified by finish,
+        4. and starts execution at the function specified by start.
+        5. After the breakpoint of finish is hit, it removes it,
+        6. and if the symbol specified in results exists, it returns
+           the memory pointed by it limited by the res_size parameter.
+        """
 
-rsp = RSP(sys.argv[1])
-rsp.dump_regs()
+        # parse elf for symbol table
+        symbols = elf.get_symbols('%s.elf' % file_prefix)
 
-# load test.bin
-print 'load test'
-with open('test.bin','r') as fd:
-    buf = fd.read()
-    rsp.store(buf)
+        if self.verbose: print 'load %s.bin' % file_prefix
+        with open('%s.bin' % file_prefix,'r') as fd:
+            buf = fd.read()
+            self.store(buf)
 
-print "verify test"
-rd = rsp.dump(len(buf))
-print rd == buf
+        if verify:
+            if self.verbose: print "verify test",
+            if not self.dump(len(buf)) == buf:
+                raise ValueError("uploaded binary failed to verify")
+            if self.verbose: print 'OK'
 
-#########################
+        finish = "%08x" % (symbols['finish']& ~1)
+        #print "set final break: @finish (0x%s)" % finish, self.fetch('Z0,%s,2' % finish)
+        old = unhex(self.fetch('m%s,2' % finish))
+        tmp = self.fetch('X%s,2:\xbe\xbe' % finish)
+        if self.verbose:
+            print "set final break: @finish (0x%s)" % finish, tmp
+            print 'old', repr(old)
 
-entry = "%08x" % (elf.get_symbols('test.elf')['test'] & ~1)
-print "set new pc: @test (0x%s)" % entry
-rsp.set_reg('pc', entry)
+        entry = "%08x" % (symbols[start] & ~1)
+        if self.verbose: print "set new pc: @test (0x%s)" % entry
+        self.set_reg('pc', entry)
 
-#print "stepping"
-#print rsp.fetch('s')
+        if self.verbose: print "continuing"
+        sig = self.fetch('c')
+        if not sig == 'T05':
+            print 'strange signal', sig
+        elif self.verbose:
+            print 'breakpoint hit'
+            self.dump_regs()
 
-#rsp.dump_regs()
+        #if self.verbose: print "reset final break: @finish (0x%s)" % finish, self.fetch('z0,%s,2' % finish)
+        tmp = self.fetch('X%s,2:%s' % (finish, old))
+        if self.verbose: print "reset breakpoint: @finish (0x%s)" % finish, tmp
+        results = symbols.get('result')
+        if results:
+            ptr = switch_endian(self.fetch('m%x,4' % (results & ~1)))
+            return repr(unhex(self.fetch('m%s,%x' % (ptr, res_size))))
 
-print "continuing"
-rsp.send('c')
+    def execv(self, file_prefix, start='test'):
+        if self.verbose: print 'load %s.bin' % file_prefix
+        with open('%s.bin' % file_prefix,'r') as fd:
+            buf = fd.read()
+            self.store(buf)
+
+        if self.verbose: print "verify test",
+        if not self.dump(len(buf)) == buf:
+            raise ValueError("uploaded binary failed to verify")
+        if self.verbose: print 'OK'
+
+        #########################
+
+        entry = "%08x" % (elf.get_symbols('%s.elf' %file_prefix)[start] & ~1)
+        if self.verbose: print "set new pc: @test (0x%s)" % entry
+        self.set_reg('pc', entry)
+
+        if self.verbose: print "running"
+        self.send('c')
+
+if __name__ == "__main__":
+    import sys
+    # argv[1] should be the file to the debugger device, e.g: /dev/ttyACM0
+    rsp = RSP(sys.argv[1], workarea=0x20019000, verbose=True)
+    rsp.dump_regs()
+    print 'result', rsp.call('test')

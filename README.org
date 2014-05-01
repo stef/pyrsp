@@ -1,0 +1,66 @@
+* pyrsp
+
+pyrsp is a very simple implementation around the [[https://sourceware.org/gdb/current/onlinedocs/gdb/Remote-Protocol.html#Remote-Protocol][GDB Remote serial
+protocol]]. Currently it only supports the [[https://github.com/gsmcmullin/blackmagic][Blackmagic JTAG debugger]]. But
+it should be very simple to support other devices that speak this
+protocol e.g. buspirates via OpenOCD. Memory/register settings are
+currently hard-coded for ARMSTM32f2xx devices. But it should be no
+problem to adapt to other HW devices.
+
+** depends
+#+BEGIN_EXAMPLE
+pip install pyelftools pyserial
+#+END_EXAMPLE
+
+** API
+the pyrsp initializer handles all the initialization, it scans and
+connects to the device automatically:
+#+BEGIN_EXAMPLE python
+rsp = RSP('/dev/ttyACM0', workarea=0x20010000, verbose=True)
+#+END_EXAMPLE
+
+The most interesting function is RSP.call():
+
+#+BEGIN_EXAMPLE python
+RSP(sys.argv[1], workarea=0x20019000, verbose=True)
+def call(self, file_prefix, start='test', finish='finish', results='result', res_size=10, verbose=True, verify=True):
+#+END_EXAMPLE
+
+1. Loads the '.bin' file given by file_prefix into the device at the
+workarea of the device.
+2. If verify is set, the workarea is read out and compared to the
+original '.bin' file.
+3. Using the '.elf' file it sets a breakpoint on the function
+specified by finish,
+4. and starts execution at the function specified by start.
+5. After the breakpoint of finish is hit, it removes it,
+6. and if the symbol specified in results exists, it returns the
+memory pointed by it limited by the res_size parameter.
+
+** Example session
+#+BEGIN_EXAMPLE
+time ./rsp.py /dev/ttyACM1
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+00000000 200194e4 200194d9 200001c0 00000000 00000000 00000002 00000000 00000000 00000000 00000000 00000000 08001f31 2001fca8 20019045 20019008 6100000b 2001fca8 00000000
+result load test.bin
+verify test OK
+set final break: @finish (0x20019000) OK
+old '\x02K'
+set new pc: @test (0x20019010)
+continuing
+breakpoint hit
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+0000001f 200194e4 200194d9 7c000000 00000000 00000000 00000002 00000000 00000000 00000000 00000000 00000000 08001f31 2001fc98 20019045 20019000 6100000b 2001fc98 00000000
+reset breakpoint: @finish (0x20019000) OK
+'fail\x00\x01\x02\x03\x05\x05\x00\xd9\x94\x01 \x00'
+./rsp.py /dev/ttyACM1  0.27s user 0.06s system 14% cpu 2.190 total
+#+END_EXAMPLE
+
+** finish function for .call()
+GCC might optimize out very simple finish functions, to avoid this you
+can use the example below:
+#+BEGIN_EXAMPLE
+__attribute__ ((noinline)) void finish(void) {
+  while(1);
+}
+#+END_EXAMPLE
