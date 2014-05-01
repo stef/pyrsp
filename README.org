@@ -22,7 +22,14 @@ rsp = RSP('/dev/ttyACM0', workarea=0x20010000, verbose=True)
 The most interesting function is RSP.call():
 
 #+BEGIN_EXAMPLE python
-def call(self, file_prefix, start='test', finish='finish', results='result', res_size=10, verbose=True, verify=True):
+def call(self,
+         file_prefix,
+         start='test',
+         finish='finish',
+         results='result',
+         res_size=10,
+         verbose=True,
+         verify=True):
 #+END_EXAMPLE
 
 1. Loads the '.bin' file given by file_prefix into the device at the
