@@ -16,7 +16,23 @@
 
 # (C) 2014 by Stefan Marsiske, <s@ctrlc.hu>
 
-import serial, elf
+import serial
+from elftools.common.py3compat import bytes2str
+from elftools.elf.elffile import ELFFile
+from elftools.elf.sections import SymbolTableSection
+
+def get_symbols(fname):
+    with open(fname,'r') as stream:
+        elffile = ELFFile(stream)
+        section = elffile.get_section_by_name(b'.symtab')
+        if not section:
+            raise ValueError('No symbol table found. Perhaps this ELF has been stripped?')
+
+        res = {}
+        if isinstance(section, SymbolTableSection):
+            for i in xrange(section.num_symbols()):
+                res[bytes2str(section.get_symbol(i).name)]=(section.get_symbol(i).entry.st_value)
+        return res
 
 def pack(data):
     for a, b in [(x, chr(ord(x) ^ 0x20)) for x in ['}','*','#','$']]:
@@ -185,7 +201,7 @@ class RSP:
         """
 
         # parse elf for symbol table
-        symbols = elf.get_symbols('%s.elf' % file_prefix)
+        symbols = get_symbols('%s.elf' % file_prefix)
 
         if self.verbose: print 'load %s.bin' % file_prefix
         with open('%s.bin' % file_prefix,'r') as fd:
@@ -239,7 +255,7 @@ class RSP:
 
         #########################
 
-        entry = "%08x" % (elf.get_symbols('%s.elf' %file_prefix)[start] & ~1)
+        entry = "%08x" % (get_symbols('%s.elf' %file_prefix)[start] & ~1)
         if self.verbose: print "set new pc: @test (0x%s)" % entry
         self.set_reg('pc', entry)
 
