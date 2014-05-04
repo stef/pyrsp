@@ -26,11 +26,13 @@ from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
 
 def pack(data):
+    """ formats data into a RSP packet """
     for a, b in [(x, chr(ord(x) ^ 0x20)) for x in ['}','*','#','$']]:
         data = data.replace(a,'}%s' % b)
     return "$%s#%02X" % (data, (sum(ord(c) for c in data) % 256))
 
 def unpack(pkt):
+    """ unpacks an RSP packet, returns the data"""
     if pkt[0]!='$' or pkt[-3]!='#':
         raise ValueError('bad packet')
     if (sum(ord(c) for c in pkt[1:-3]) % 256) != int(pkt[-2:],16):
@@ -39,9 +41,11 @@ def unpack(pkt):
     return pkt
 
 def unhex(data):
+    """ takes a hex encoded string and returns the binary representation """
     return ''.join(chr(int(x,16)) for x in split_by_n(data,2))
 
 def switch_endian(data):
+    """ byte-wise reverses a hex encoded string """
     return ''.join(reversed(list(split_by_n( data ,2))))
 
 def split_by_n( seq, n ):
@@ -52,17 +56,22 @@ def split_by_n( seq, n ):
         seq = seq[n:]
 
 def hexdump(data):
+    """ returns data formatted as a hexdump """
     return "\t%s" % '\n\t'.join(["%s %s" % (' '.join([''.join(["%02x" % ord(c) for c in word])
                                                       for word in split_by_n(line,8)]),
                                             ''.join([c if c.isalnum() else '.' for c in line]))
                                  for line in split_by_n(data,32)])
 
 class FCache():
+    """ helper class to read out the source code lines
+        from the debug section of an elf file """
     def __init__(self):
         self.fd = None
         self.name = None
 
     def get_src_lines(self, fname, start, end = None):
+        """ returns the lines indexed from start to end of the file
+            indicated by fname"""
         if not self.name or self.name != fname:
             if self.name:
                 self.fd.close()
@@ -85,6 +94,14 @@ class FCache():
 fcache = FCache()
 
 def get_src_map(elffile):
+    """ builds a dictionary of the DWARF information, used to populate
+        RSP.src_map
+
+        returns a dictionary with either the address as key, or
+        filename:lineno the values are respectively {addr, file,
+        lineno, line} and {addr, line}
+    """
+
     src_map = {}
     if not elffile.has_dwarf_info():
         raise ValueError("No DWARF info found")
@@ -116,6 +133,9 @@ def get_src_map(elffile):
 
 class RSP:
     def __init__(self, port, file_prefix=None, verbose=False):
+        """ read the elf file if given by file_prefix, connects to the
+            debugging device specified by port, and initializes itself.
+        """
         self.br = {}
         self.verbose = verbose
         self.file_prefix = file_prefix
@@ -163,6 +183,7 @@ class RSP:
             raise ValueError('cannot erase work area')
 
     def send(self, data, retries=50):
+        """ sends data via the RSP protocol to the device """
         self.port.write(pack(data))
         res = None
         while not res:
@@ -178,6 +199,8 @@ class RSP:
             raise ValueError("retry fail")
 
     def readpkt(self):
+        """ blocks until it reads an RSP packet, and returns it's
+            data"""
         c=None
         discards=[]
         while(c!='$'):
@@ -200,6 +223,8 @@ class RSP:
                 return res
 
     def store(self, data, addr=None):
+        """ stores data at addr if given otherwise at beginning of
+            .text segment aka self.workarea"""
         if addr==None:
             addr=self.workarea
         for pkt in split_by_n(data, 400): # TODO should pktmaxsize, see todo in __init__
@@ -208,6 +233,8 @@ class RSP:
             addr+=pktlen
 
     def dump(self, size, addr = None):
+        """ dumps data from addr if given otherwise at beginning of
+            .text segment aka self.workarea"""
         if addr==None:
             addr=self.workarea
         rd = []
@@ -223,14 +250,17 @@ class RSP:
         return ''.join(rd)
 
     def fetch(self,data):
+        """ sends data and returns reply """
         self.send(data)
         return self.readpkt()
 
     def fetchOK(self,data,ok='OK'):
+        """ sends data and expects success """
         res = self.fetch(data)
         if res!=ok: raise ValueError(res)
 
     def set_reg(self, reg, val):
+        """ sets value of register reg to val on device """
         if isinstance(val, str):
             self.regs[reg]=val
         if isinstance(val, int):
@@ -238,15 +268,18 @@ class RSP:
         self.fetchOK("G%s" % ''.join([switch_endian(self.regs[r]) for r in self.registers]))
 
     def refresh_regs(self):
+        """ loads and caches values of the registers on the device """
         self.send('g')
         self.regs=dict(zip(self.registers,(switch_endian(reg) for reg in split_by_n(self.readpkt(),8))))
 
     def dump_regs(self):
+        """ refreshes and dumps registers via stdout """
         self.refresh_regs()
         print ' '.join(["%8s" % r for r in self.registers[:-1]])
         print ' '.join(["%s" % self.regs[r] for r in self.registers[:-1]])
 
     def attach(self, id='1'):
+        """ attaches to blackmagic jtag debugger in swd mode """
         self.send('qRcmd,737764705f7363616e')
         pkt=self.readpkt()
         while pkt!='OK':
@@ -258,6 +291,9 @@ class RSP:
         self.fetchOK('vAttach;%s' % id,'T05')
 
     def run(self, start=None):
+        """ sets pc to start if given or to entry address from elf header,
+            passes control to the device and handles breakpoints
+        """
         if not start:
             entry = "%08x" % self.entry
         else:
@@ -274,16 +310,22 @@ class RSP:
         print 'strange signal', sig
 
     def handle_br(self):
-        self.refresh_regs()
+        """ dumps register on breakpoint/signal, continues if unknown,
+            otherwise it calls the appropriate callback.
+        """
         if not self.regs['pc'] in self.br:
-            print "unknown break point passed"
+            print "\nunknown break point passed"
+            self.dump_regs()
             return
+        self.dump_regs()
         if self.verbose:
             print '\nbreakpoint hit:', self.br[self.regs['pc']]['sym']
-        self.dump_regs()
         self.br[self.regs['pc']]['cb']()
 
     def set_br(self, sym, cb, quiet=False):
+        """ sets a breakpoint at symbol sym, and install callback cb
+            for it
+        """
         addr = self.symbols.get(sym)
         if not addr:
             print "unknown symbol: %s, ignoring request to set br" % sym
@@ -304,6 +346,7 @@ class RSP:
             print "set break: @%s (0x%s)" % (sym, addr), tmp
 
     def del_br(self, addr, quiet=False):
+        """ deletes breakpoint at address addr """
         sym = self.br[addr]['sym']
         #self.fetch('z0,%s,2' % addr)
         tmp = self.fetch('X%s,2:%s' % (addr, self.br[addr]['old']))
@@ -311,6 +354,10 @@ class RSP:
         del self.br[addr]
 
     def finish_cb(self):
+        """ final breakpoint, if hit it deletes all breakpoints,
+            continues running the cpu, and detaches from the debugging
+            device
+        """
         # clear all breaks
         for br in self.br.keys()[:]:
             self.del_br(br)
@@ -321,6 +368,8 @@ class RSP:
         sys.exit(0)
 
     def get_src_line(self, addr):
+        """ returns the source-code line associated with address addr
+        """
         i = 0
         src_line = None
         while not src_line and i<1023:
@@ -329,6 +378,11 @@ class RSP:
         return src_line
 
     def dump_cb(self):
+        """ rsp_dump callback, hit if rsp_dump is called. Outputs to
+            stdout the source line, and a hexdump of the memory
+            pointed by $r0 with a size of $r1 bytes. Then it resumes
+            running.
+        """
         src_line = self.get_src_line(int(self.regs['lr'],16) - 3)
         if src_line:
             print "%s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
@@ -349,6 +403,10 @@ class RSP:
             sys.exit(1)
 
     def load(self, verify):
+        """ loads binary belonging to elf to beginning of .text
+            segment (alias self.workarea), and if verify is set read
+            it back and check if it matches with the uploaded binary.
+        """
         if self.verbose: print 'load %s.bin' % self.file_prefix
         with open('%s.bin' % self.file_prefix,'r') as fd:
             buf = fd.read()
@@ -364,14 +422,13 @@ class RSP:
         """
         1. Loads the '.bin' file given by self.file_prefix into the device
            at the workarea (.text seg) of the device.
-        2. If verify is set, the workarea is read out and compared to
-           the original '.bin' file.
-        3. Using the '.elf' file it sets a breakpoint on the function
+        2. Using the '.elf' file it sets a breakpoint on the function
            specified by rsp_finish and rsp_dump,
-        4. and starts execution at the function specified by start or elf e_entry.
-        5. After the breakpoint of rsp_dump is hit, r1 bytes are dumped
+        3. and starts execution at the function specified by start or elf e_entry.
+        4. After the breakpoint of rsp_dump is hit, r1 bytes are dumped
            from the buffer pointed to by r0.
-        6. After the breakpoint of rsp_finish is hit, it removes it, and detaches
+        5. After the breakpoint of rsp_finish is hit, it removes all
+           break points, and detaches
         """
 
         self.load(verify)
@@ -380,6 +437,10 @@ class RSP:
         self.run(start)
 
     def read_elf(self, fname):
+        """ reads out the entry point, the .text segment addres, the
+            symbol table, and the debugging information from the elf
+            header.
+        """
         with open(fname,'r') as stream:
             elffile = ELFFile(stream)
 
