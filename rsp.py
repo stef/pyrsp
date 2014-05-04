@@ -52,20 +52,21 @@ def split_by_n( seq, n ):
         seq = seq[n:]
 
 class RSP:
-    def __init__(self, port, file_prefix, verbose=False):
+    def __init__(self, port, file_prefix=None, verbose=False):
         self.br = {}
         self.verbose = verbose
+        self.file_prefix = file_prefix
         # open serial connection
         self.port = serial.Serial(port, 115200, timeout=1)
         # parse elf for symbol table, entry point and work area
-        self.read_elf('%s.elf' % file_prefix)
+        self.read_elf('%s.elf' % self.file_prefix)
         if verbose:
             print "work area: 0x%x" % self.workarea
             print "entry: 0x%x" % self.entry
 
-        # setup registers
+        # setup registers TODO
         self.registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "xpsr", "msp", "psp", "special"]
-        # registers should be parsed from the output of
+        # registers should be parsed from the output of, see target.xml
         #self.fetch('qXfer:features:read:target.xml:0,3fb')
         #self.fetch('Xfer:features:read:target.xml:3cf,3fb')
         #self.fetch('qXfer:memory-map:read::0,3fb')
@@ -75,7 +76,7 @@ class RSP:
         pkt = self.readpkt()
         if pkt!='OK': raise ValueError(repr(pkt))
 
-        # read out maxpacketsize and ignore it for the time being /o\
+        # read out maxpacketsize and ignore it for the time being /o\ TODO
         self.send('qSupported')
         self.feats = [ass.split('=') for ass in self.readpkt().split(';')]
 
@@ -135,7 +136,7 @@ class RSP:
     def store(self, data, addr=None):
         if addr==None:
             addr=self.workarea
-        for pkt in split_by_n(data, 400):
+        for pkt in split_by_n(data, 400): # TODO should pktmaxsize, see todo in __init__
             pktlen = len(pkt)
             self.fetchOK('X%x,%x:%s' % (addr, pktlen, pkt))
             addr+=pktlen
@@ -145,7 +146,7 @@ class RSP:
             addr=self.workarea
         rd = []
         i=0
-        bsize = 256
+        bsize = 256 # TODO should pktmaxsize, see todo in __init__
         while(i<size):
             bsize = bsize if i+bsize<size else size - i
             self.send('m%x,%x' % (addr+i, bsize))
@@ -195,7 +196,7 @@ class RSP:
             entry = self.entry
         else:
             entry = "%08x" % (self.symbols[start] & ~1)
-        if self.verbose: print "set new pc: @test (0x%x)" % entry,
+        if self.verbose: print "set new pc: @test (0x%s)" % entry,
         self.set_reg('pc', entry)
         if self.verbose: print 'OK'
 
@@ -261,22 +262,9 @@ class RSP:
             print 'strange signal while stepi over br, abort'
             sys.exit(1)
 
-    def call(self, file_prefix, start=None, finish='finish', results='result', res_size=10, verify=True):
-        """
-        1. Loads the '.bin' file given by file_prefix into the device
-           at the workarea of the device.
-        2. If verify is set, the workarea is read out and compared to
-           the original '.bin' file.
-        3. Using the '.elf' file it sets a breakpoint on the function
-           specified by finish,
-        4. and starts execution at the function specified by start.
-        5. After the breakpoint of finish is hit, it removes it,
-        6. and if the symbol specified in results exists, it returns
-           the memory pointed by it limited by the res_size parameter.
-        """
-
-        if self.verbose: print 'load %s.bin' % file_prefix
-        with open('%s.bin' % file_prefix,'r') as fd:
+    def load(self, verify):
+        if self.verbose: print 'load %s.bin' % self.file_prefix
+        with open('%s.bin' % self.file_prefix,'r') as fd:
             buf = fd.read()
             self.store(buf)
 
@@ -286,8 +274,23 @@ class RSP:
                 raise ValueError("uploaded binary failed to verify")
             if self.verbose: print 'OK'
 
+    def call(self, start=None, finish='rsp_finish', dump='rsp_dump', verify=True):
+        """
+        1. Loads the '.bin' file given by self.file_prefix into the device
+           at the workarea (.text seg) of the device.
+        2. If verify is set, the workarea is read out and compared to
+           the original '.bin' file.
+        3. Using the '.elf' file it sets a breakpoint on the function
+           specified by rsp_finish and rsp_dump,
+        4. and starts execution at the function specified by start or elf e_entry.
+        5. After the breakpoint of rsp_dump is hit, r1 bytes are dumped
+           from the buffer pointed to by r0.
+        6. After the breakpoint of rsp_finish is hit, it removes it, and detaches
+        """
+
+        self.load(verify)
         self.set_br(finish, self.finish_cb)
-        self.set_br('dump', self.dump_cb)
+        self.set_br(dump, self.dump_cb)
         self.run(start)
 
     def read_elf(self, fname):
@@ -300,7 +303,7 @@ class RSP:
             # get text seg address
             section = elffile.get_section_by_name(b'.text')
             if not section:
-                raise ValueError('No symbol table found. Perhaps this ELF has been stripped?')
+                raise ValueError('No text segment found.')
             self.workarea = section.header['sh_addr']
 
             # init symbols
