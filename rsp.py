@@ -195,7 +195,7 @@ class RSP:
             entry = self.entry
         else:
             entry = "%08x" % (self.symbols[start] & ~1)
-        if self.verbose: print "set new pc: @test (0x%s)" % entry,
+        if self.verbose: print "set new pc: @test (0x%x)" % entry,
         self.set_reg('pc', entry)
         if self.verbose: print 'OK'
 
