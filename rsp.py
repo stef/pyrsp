@@ -16,23 +16,14 @@
 
 # (C) 2014 by Stefan Marsiske, <s@ctrlc.hu>
 
+import os
+activate_this = os.path.dirname(__file__)+'/env/bin/activate_this.py'
+if os.path.exists(activate_this):
+    execfile(activate_this, dict(__file__=activate_this))
+
 import serial
-from elftools.common.py3compat import bytes2str
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
-
-def get_symbols(fname):
-    with open(fname,'r') as stream:
-        elffile = ELFFile(stream)
-        section = elffile.get_section_by_name(b'.symtab')
-        if not section:
-            raise ValueError('No symbol table found. Perhaps this ELF has been stripped?')
-
-        res = {}
-        if isinstance(section, SymbolTableSection):
-            for i in xrange(section.num_symbols()):
-                res[bytes2str(section.get_symbol(i).name)]=(section.get_symbol(i).entry.st_value)
-        return res
 
 def pack(data):
     for a, b in [(x, chr(ord(x) ^ 0x20)) for x in ['}','*','#','$']]:
@@ -61,25 +52,38 @@ def split_by_n( seq, n ):
         seq = seq[n:]
 
 class RSP:
-    def __init__(self, port, workarea=0x20000000, verbose=False):
-        self.workarea = workarea
+    def __init__(self, port, file_prefix, verbose=False):
+        self.br = {}
         self.verbose = verbose
+        # open serial connection
         self.port = serial.Serial(port, 115200, timeout=1)
+        # parse elf for symbol table, entry point and work area
+        self.read_elf('%s.elf' % file_prefix)
+        if verbose:
+            print "work area: 0x%x" % self.workarea
+            print "entry: 0x%x" % self.entry
+
+        # setup registers
         self.registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "xpsr", "msp", "psp", "special"]
-        pkt = self.readpkt()
-        if pkt!='OK': raise ValueError(repr(pkt))
-        self.send('qSupported')
-        self.feats = [ass.split('=') for ass in self.readpkt().split(';')]
-
-        self.fetchOK('!') # enable extended-mode
-
-        # attach
-        self.attach()
-
+        # registers should be parsed from the output of
         #self.fetch('qXfer:features:read:target.xml:0,3fb')
         #self.fetch('Xfer:features:read:target.xml:3cf,3fb')
         #self.fetch('qXfer:memory-map:read::0,3fb')
         #self.fetch('qXfer:memory-map:read::364,3fb')
+
+        # read initial OK
+        pkt = self.readpkt()
+        if pkt!='OK': raise ValueError(repr(pkt))
+
+        # read out maxpacketsize and ignore it for the time being /o\
+        self.send('qSupported')
+        self.feats = [ass.split('=') for ass in self.readpkt().split(';')]
+
+        # enable extended-mode
+        self.fetchOK('!')
+
+        # attach
+        self.attach()
 
         # test write
         self.fetchOK('X%08x,0' % self.workarea)
@@ -186,7 +190,78 @@ class RSP:
                 print unhex(pkt[1:-1])
         self.fetchOK('vAttach;%s' % id,'T05')
 
-    def call(self, file_prefix, start='test', finish='finish', results='result', res_size=10, verify=True):
+    def run(self, start=None):
+        if not start:
+            entry = self.entry
+        else:
+            entry = "%08x" % (self.symbols[start] & ~1)
+        if self.verbose: print "set new pc: @test (0x%s)" % entry,
+        self.set_reg('pc', entry)
+        if self.verbose: print 'OK'
+
+        if self.verbose: print "continuing"
+        sig = self.fetch('c')
+        while sig == 'T05':
+            self.handle_br()
+            sig = self.fetch('c')
+        print 'strange signal', sig
+
+    def handle_br(self):
+        self.refresh_regs()
+        if not self.regs['pc'] in self.br:
+            print "unknown break point passed"
+            return
+        if self.verbose:
+            print 'breakpoint hit:', self.br[self.regs['pc']]['sym']
+        self.dump_regs()
+        self.br[self.regs['pc']]['cb']()
+
+    def set_br(self, sym, cb, quiet=False):
+        addr = "%08x" % (self.symbols[sym]& ~1)
+        if addr in self.br: print "warn: overwriting breakpoint at %s" % sym
+        self.br[addr]={'sym': sym,
+                       'cb': cb,
+                       'old': unhex(self.fetch('m%s,2' % addr))}
+        #self.fetch('Z0,%s,2' % addr)
+        tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
+        if self.verbose and not quiet:
+            print "set break: @%s (0x%s)" % (sym, addr), tmp
+
+    def del_br(self, addr, quiet=False):
+        sym = self.br[addr]['sym']
+        #self.fetch('z0,%s,2' % addr)
+        tmp = self.fetch('X%s,2:%s' % (addr, self.br[addr]['old']))
+        if self.verbose and not quiet: print "clear breakpoint: @%s (0x%s)" % (sym, addr), tmp
+        del self.br[addr]
+
+    def finish_cb(self):
+        # clear all breaks
+        for br in self.br.keys()[:]:
+            self.del_br(br)
+        # leave in running state
+        if self.verbose:
+            print "continuing and detaching"
+        self.send('c')
+        sys.exit(0)
+
+    def dump_cb(self):
+        sym = self.br[self.regs['pc']]['sym']
+        res_size = int(self.regs['r1'],16)
+        if res_size < 1024: # for sanity
+            ptr = int(self.regs['r0'],16)
+            res = unhex(self.fetch('m%x,%x' % (ptr, res_size)))
+            print repr(res)
+            print [hex(ord(x)) for x in res]
+
+        self.del_br(self.regs['pc'], quiet=True)
+        sig = self.fetch('s')
+        if sig == 'T05':
+            self.set_br(sym, self.dump_cb, quiet=True)
+        else:
+            print 'strange signal while stepi over br, abort'
+            sys.exit(1)
+
+    def call(self, file_prefix, start=None, finish='finish', results='result', res_size=10, verify=True):
         """
         1. Loads the '.bin' file given by file_prefix into the device
            at the workarea of the device.
@@ -200,9 +275,6 @@ class RSP:
            the memory pointed by it limited by the res_size parameter.
         """
 
-        # parse elf for symbol table
-        symbols = get_symbols('%s.elf' % file_prefix)
-
         if self.verbose: print 'load %s.bin' % file_prefix
         with open('%s.bin' % file_prefix,'r') as fd:
             buf = fd.read()
@@ -214,57 +286,37 @@ class RSP:
                 raise ValueError("uploaded binary failed to verify")
             if self.verbose: print 'OK'
 
-        finish = "%08x" % (symbols['finish']& ~1)
-        #print "set final break: @finish (0x%s)" % finish, self.fetch('Z0,%s,2' % finish)
-        old = unhex(self.fetch('m%s,2' % finish))
-        tmp = self.fetch('X%s,2:\xbe\xbe' % finish)
-        if self.verbose:
-            print "set final break: @finish (0x%s)" % finish, tmp
-            print 'old', repr(old)
+        self.set_br(finish, self.finish_cb)
+        self.set_br('dump', self.dump_cb)
+        self.run(start)
 
-        entry = "%08x" % (symbols[start] & ~1)
-        if self.verbose: print "set new pc: @test (0x%s)" % entry
-        self.set_reg('pc', entry)
+    def read_elf(self, fname):
+        with open(fname,'r') as stream:
+            elffile = ELFFile(stream)
 
-        if self.verbose: print "continuing"
-        sig = self.fetch('c')
-        if not sig == 'T05':
-            print 'strange signal', sig
-        elif self.verbose:
-            print 'breakpoint hit'
-            self.dump_regs()
+            # get entry point
+            self.entry = elffile.header.e_entry
 
-        #if self.verbose: print "reset final break: @finish (0x%s)" % finish, self.fetch('z0,%s,2' % finish)
-        tmp = self.fetch('X%s,2:%s' % (finish, old))
-        if self.verbose: print "reset breakpoint: @finish (0x%s)" % finish, tmp
-        results = symbols.get('result')
-        if results:
-            ptr = switch_endian(self.fetch('m%x,4' % (results & ~1)))
-            return repr(unhex(self.fetch('m%s,%x' % (ptr, res_size))))
+            # get text seg address
+            section = elffile.get_section_by_name(b'.text')
+            if not section:
+                raise ValueError('No symbol table found. Perhaps this ELF has been stripped?')
+            self.workarea = section.header['sh_addr']
 
-    def execv(self, file_prefix, start='test'):
-        if self.verbose: print 'load %s.bin' % file_prefix
-        with open('%s.bin' % file_prefix,'r') as fd:
-            buf = fd.read()
-            self.store(buf)
+            # init symbols
+            section = elffile.get_section_by_name(b'.symtab')
+            if not section:
+                raise ValueError('No symbol table found. Perhaps this ELF has been stripped?')
 
-        if self.verbose: print "verify test",
-        if not self.dump(len(buf)) == buf:
-            raise ValueError("uploaded binary failed to verify")
-        if self.verbose: print 'OK'
-
-        #########################
-
-        entry = "%08x" % (get_symbols('%s.elf' %file_prefix)[start] & ~1)
-        if self.verbose: print "set new pc: @test (0x%s)" % entry
-        self.set_reg('pc', entry)
-
-        if self.verbose: print "running"
-        self.send('c')
+            res = {}
+            if isinstance(section, SymbolTableSection):
+                for i in xrange(section.num_symbols()):
+                    res[section.get_symbol(i).name]=(section.get_symbol(i).entry.st_value)
+            self.symbols = res
 
 if __name__ == "__main__":
     import sys
     # argv[1] should be the file to the debugger device, e.g: /dev/ttyACM0
-    rsp = RSP(sys.argv[1], workarea=0x20019000, verbose=True)
+    rsp = RSP(sys.argv[1], 'test', verbose=True)
     rsp.dump_regs()
-    print 'result', rsp.call('test')
+    res = rsp.call('test')
