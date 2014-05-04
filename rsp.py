@@ -51,6 +51,69 @@ def split_by_n( seq, n ):
         yield seq[:n]
         seq = seq[n:]
 
+def hexdump(data):
+    return "\t%s" % '\n\t'.join(["%s %s" % (' '.join([''.join(["%02x" % ord(c) for c in word])
+                                                      for word in split_by_n(line,8)]),
+                                            ''.join([c if c.isalnum() else '.' for c in line]))
+                                 for line in split_by_n(data,32)])
+
+class FCache():
+    def __init__(self):
+        self.fd = None
+        self.name = None
+
+    def get_src_lines(self, fname, start, end = None):
+        if not self.name or self.name != fname:
+            if self.name:
+                self.fd.close()
+            self.fd = open(fname,'r')
+            self.name = fname
+
+        self.fd.seek(0)
+        line_ptr=0
+        while line_ptr < start-1:
+            self.fd.readline()
+            line_ptr+=1
+        if end and end>start:
+            res = []
+            while line_ptr<end:
+                res.append(self.fd.readline())
+                line_ptr+=1
+            return ''.join(res).strip()
+        else:
+            return self.fd.readline().strip()
+fcache = FCache()
+
+def get_src_map(elffile):
+    src_map = {}
+    if not elffile.has_dwarf_info():
+        raise ValueError("No DWARF info found")
+    _dwarfinfo = elffile.get_dwarf_info()
+
+    for cu in _dwarfinfo.iter_CUs():
+        lineprogram = _dwarfinfo.line_program_for_CU(cu)
+
+        cu_filename = lineprogram['file_entry'][0].name
+        if len(lineprogram['include_directory']) > 0:
+            dir_index = lineprogram['file_entry'][0].dir_index
+            if dir_index > 0:
+                dir = lineprogram['include_directory'][dir_index - 1]
+            else:
+                dir = '.'
+            cu_filename = '%s/%s' % (dir, cu_filename)
+
+        for entry in lineprogram.get_entries():
+            state = entry.state
+            if state:
+                fname = lineprogram['file_entry'][state.file - 1].name
+                line = fcache.get_src_lines(fname, state.line)
+                src_map["%08x" % state.address] = {'file': fname, 'lineno': state.line, 'line': line}
+                try:
+                    src_map["%s:%s" % (fname, state.line)].append({'addr': "%08x" % state.address, 'line': line})
+                except KeyError:
+                    src_map["%s:%s" % (fname, state.line)]= [{'addr': "%08x" % state.address, 'line': line}]
+    return src_map
+
 class RSP:
     def __init__(self, port, file_prefix=None, verbose=False):
         self.br = {}
@@ -85,6 +148,9 @@ class RSP:
 
         # attach
         self.attach()
+
+        # show current regs
+        self.dump_regs()
 
         # test write
         self.fetchOK('X%08x,0' % self.workarea)
@@ -193,7 +259,7 @@ class RSP:
 
     def run(self, start=None):
         if not start:
-            entry = self.entry
+            entry = "%08x" % self.entry
         else:
             entry = "%08x" % (self.symbols[start] & ~1)
         if self.verbose: print "set new pc: @test (0x%s)" % entry,
@@ -213,16 +279,25 @@ class RSP:
             print "unknown break point passed"
             return
         if self.verbose:
-            print 'breakpoint hit:', self.br[self.regs['pc']]['sym']
+            print '\nbreakpoint hit:', self.br[self.regs['pc']]['sym']
         self.dump_regs()
         self.br[self.regs['pc']]['cb']()
 
     def set_br(self, sym, cb, quiet=False):
-        addr = "%08x" % (self.symbols[sym]& ~1)
-        if addr in self.br: print "warn: overwriting breakpoint at %s" % sym
-        self.br[addr]={'sym': sym,
-                       'cb': cb,
-                       'old': unhex(self.fetch('m%s,2' % addr))}
+        addr = self.symbols.get(sym)
+        if not addr:
+            print "unknown symbol: %s, ignoring request to set br" % sym
+            return
+        addr = "%08x" % (addr & ~1)
+        if addr in self.br:
+            print "warn: overwriting breakpoint at %s" % sym
+            self.br[addr]={'sym': sym,
+                           'cb': cb,
+                           'old': self.br[addr]['old']}
+        else:
+            self.br[addr]={'sym': sym,
+                           'cb': cb,
+                           'old': unhex(self.fetch('m%s,2' % addr))}
         #self.fetch('Z0,%s,2' % addr)
         tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
         if self.verbose and not quiet:
@@ -239,20 +314,31 @@ class RSP:
         # clear all breaks
         for br in self.br.keys()[:]:
             self.del_br(br)
-        # leave in running state
         if self.verbose:
             print "continuing and detaching"
+        # leave in running state
         self.send('c')
         sys.exit(0)
 
+    def get_src_line(self, addr):
+        i = 0
+        src_line = None
+        while not src_line and i<1023:
+            src_line = self.src_map.get("%08x" % (addr - i))
+            i+=2
+        return src_line
+
     def dump_cb(self):
+        src_line = self.get_src_line(int(self.regs['lr'],16) - 3)
+        if src_line:
+            print "%s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
+
         sym = self.br[self.regs['pc']]['sym']
         res_size = int(self.regs['r1'],16)
         if res_size < 1024: # for sanity
             ptr = int(self.regs['r0'],16)
             res = unhex(self.fetch('m%x,%x' % (ptr, res_size)))
-            print repr(res)
-            print [hex(ord(x)) for x in res]
+            print hexdump(res)
 
         self.del_br(self.regs['pc'], quiet=True)
         sig = self.fetch('s')
@@ -317,9 +403,10 @@ class RSP:
                     res[section.get_symbol(i).name]=(section.get_symbol(i).entry.st_value)
             self.symbols = res
 
+            self.src_map = get_src_map(elffile)
+
 if __name__ == "__main__":
     import sys
     # argv[1] should be the file to the debugger device, e.g: /dev/ttyACM0
-    rsp = RSP(sys.argv[1], 'test', verbose=True)
-    rsp.dump_regs()
-    res = rsp.call('test')
+    rsp = RSP(sys.argv[1], sys.argv[2], verbose=True)
+    res = rsp.call()
