@@ -10,8 +10,9 @@ problem to adapt to other HW devices.
 possible uses: on-device unit testing, fuzzing, reverse engineering.
 
 Currently you can load/dump memory, set/clear breakpoints, load extra
-information from an elf file, dispatch callbacks on breakpoints, and
-run the binary associated with the elf file, display source code associated with addresses.
+information from an elf file, dispatch callbacks on breakpoints, run
+the binary associated with the elf file and display source code
+associated with addresses.
 
 ** depends
 #+BEGIN_EXAMPLE
@@ -49,6 +50,55 @@ pip install pyelftools pyserial
    # run binary in mainloop until rsp_finish is hit
    # or some unhandled signal occurs
    rsp.run()
+#+END_EXAMPLE
+   should produce the output in the next part, however a similar
+   result, barring the custom callback can also be produced by
+   running:
+#+BEGIN_EXAMPLE
+$ rsp.py /dev/ttyACM0 test
+#+END_EXAMPLE
+** Example session
+   see the code running below in example/
+#+BEGIN_EXAMPLE
+work area: 0x20019000
+entry: 0x20019001
+Available Targets:
+No. Att Driver
+ 1      STM32F4xx
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001f6b4 00000004 00000000 00000000 2001f6b4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6b0 2001902b 20019036 21000003 2001f6b0 00000000
+load test.bin
+verify test OK
+set break: @rsp_finish (0x20019036) OK
+set break: @rsp_dump (0x20019034) OK
+set new pc: @test (0x20019001) OK
+continuing
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 20019013 20019034 21000003 2001f6a0 00000000
+breakpoint hit: rsp_dump
+test.c:5 rsp_dump((unsigned char*) &number, 4);
+        00000000 ....
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+20019038 0000000b 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 2001901b 20019034 21000003 2001f6a0 00000000
+breakpoint hit: rsp_dump
+test.c:6 rsp_dump((unsigned char*) "hello world",11);
+        68656c6c6f20776f 726c64 hello.world
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 20019027 20019034 21000003 2001f6a0 00000000
+breakpoint hit: rsp_dump
+test.c:8 rsp_dump((unsigned char*) &number, 4);
+        55aa55aa U.U.
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 2001902b 20019036 21000003 2001f6a0 00000000
+breakpoint hit: rsp_finish
+clear breakpoint: @rsp_dump (0x20019034) OK
+clear breakpoint: @rsp_finish (0x20019036) OK
+continuing and detaching
 #+END_EXAMPLE
 ** Python API
 #+BEGIN_EXAMPLE python
@@ -170,51 +220,6 @@ read_elf(self, fname)
 #+END_EXAMPLE
 reads out the entry point, the .text segment addres, the symbol table,
 and the debugging information from the elf header.
-
-** Example session
-   see the code running below in example/
-#+BEGIN_EXAMPLE
-$ rsp.py /dev/ttyACM0 test
-work area: 0x20019000
-entry: 0x20019001
-Available Targets:
-No. Att Driver
- 1      STM32F4xx
-
-      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f6b4 00000004 00000000 00000000 2001f6b4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6b0 2001902b 20019036 21000003 2001f6b0 00000000
-load test.bin
-verify test OK
-set break: @rsp_finish (0x20019036) OK
-set break: @rsp_dump (0x20019034) OK
-set new pc: @test (0x20019001) OK
-continuing
-
-      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 20019013 20019034 21000003 2001f6a0 00000000
-breakpoint hit: rsp_dump
-test.c:5 rsp_dump((unsigned char*) &number, 4);
-        00000000 ....
-
-      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-20019038 0000000b 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 2001901b 20019034 21000003 2001f6a0 00000000
-breakpoint hit: rsp_dump
-test.c:6 rsp_dump((unsigned char*) "hello world",11);
-        68656c6c6f20776f 726c64 hello.world
-
-      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 20019027 20019034 21000003 2001f6a0 00000000
-breakpoint hit: rsp_dump
-test.c:8 rsp_dump((unsigned char*) &number, 4);
-        55aa55aa U.U.
-
-      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 2001902b 20019036 21000003 2001f6a0 00000000
-breakpoint hit: rsp_finish
-clear breakpoint: @rsp_dump (0x20019034) OK
-clear breakpoint: @rsp_finish (0x20019036) OK
-continuing and detaching
-#+END_EXAMPLE
 
 ** trigger functions for breakpoints
 If you run your code on an ARMv7, you can call and link the code in
