@@ -313,13 +313,14 @@ class RSP:
         """ dumps register on breakpoint/signal, continues if unknown,
             otherwise it calls the appropriate callback.
         """
+        print
+        self.dump_regs()
         if not self.regs['pc'] in self.br:
-            print "\nunknown break point passed"
+            print "unknown break point passed"
             self.dump_regs()
             return
-        self.dump_regs()
         if self.verbose:
-            print '\nbreakpoint hit:', self.br[self.regs['pc']]['sym']
+            print 'breakpoint hit:', self.br[self.regs['pc']]['sym']
         self.br[self.regs['pc']]['cb']()
 
     def set_br(self, sym, cb, quiet=False):
