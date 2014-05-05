@@ -9,6 +9,10 @@ problem to adapt to other HW devices.
 
 possible uses: on-device unit testing, fuzzing, reverse engineering.
 
+Currently you can load/dump memory, set/clear breakpoints, load extra
+information from an elf file, dispatch callbacks on breakpoints, and
+run the binary associated with the elf file.
+
 ** depends
 #+BEGIN_EXAMPLE
 pip install pyelftools pyserial
