@@ -4,7 +4,7 @@ pyrsp is a very simple implementation around the [[https://sourceware.org/gdb/cu
 protocol]]. Currently it only supports the [[https://github.com/gsmcmullin/blackmagic][Blackmagic JTAG debugger]]. But
 it should be very simple to support other devices that speak this
 protocol e.g. buspirates via OpenOCD. Memory/register settings are
-currently hard-coded for ARMSTM32f2xx devices. But it should be no
+currently hard-coded for ARM Cortex M3 devices. But it should be no
 problem to adapt to other HW devices.
 
 possible uses: on-device unit testing, fuzzing, reverse engineering.
@@ -16,13 +16,7 @@ pip install pyelftools pyserial
 
 ** API
 the pyrsp initializer handles all the initialization, it scans and
-connects to the device automatically:
-#+BEGIN_EXAMPLE python
-rsp = RSP('/dev/ttyACM0', workarea=0x20010000, verbose=True)
-#+END_EXAMPLE
-
-The most interesting function is RSP.call():
-
+connects to the device automatically, reads elf header information:
 #+BEGIN_EXAMPLE python
 RSP(self, port, file_prefix=None, verbose=False)
 #+END_EXAMPLE
