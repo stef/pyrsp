@@ -136,69 +136,52 @@ reads out the entry point, the .text segment addres, the symbol table,
 and the debugging information from the elf header.
 
 ** Example session
+   see the code running below in example/
 #+BEGIN_EXAMPLE
-./pysrp/rsp.py /dev/ttyACM0 test
 work area: 0x20019000
-entry: 0x20019241
+entry: 0x20019001
 Available Targets:
 No. Att Driver
  1      STM32F4xx
 
       r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f734 00000020 00000000 00002000 00000020 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6e0 20019069 20019724 61000003 2001f6e0 00000000
+2001f6b4 00000004 00000000 00000000 2001f6b4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6b0 2001902b 20019036 21000003 2001f6b0 00000000
 load test.bin
 verify test OK
-set break: @rsp_finish (0x20019736) OK
-set break: @rsp_dump (0x20019734) OK
-set new pc: @test (0x20019241) OK
+set break: @rsp_finish (0x20019036) OK
+set break: @rsp_dump (0x20019034) OK
+set new pc: @test (0x20019001) OK
 continuing
 
       r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f5f4 00000020 2001f633 2001f5b4 200001c0 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 0000007c 2001f5e0 20019035 20019734 21000003 2001f5e0 00000000
+2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 20019013 20019034 21000003 2001f6a0 00000000
 breakpoint hit: rsp_dump
-test.c:49 rsp_dump(e,32);
-	2f46df7ea6607280 7defedd55ed678c5 97d1cf4c6b4311ef f4e5ff721d565398 .F....r.......x....LkC.....r.VS.
+test.c:5 rsp_dump((unsigned char*) &number, 4);
+        00000000 ....
 
       r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f614 00000020 2001f633 2001f5b4 200001c0 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 0000007c 2001f5e0 2001903d 20019734 21000003 2001f5e0 00000000
+20019038 0000000b 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 2001901b 20019034 21000003 2001f6a0 00000000
 breakpoint hit: rsp_dump
-test.c:50 rsp_dump(pub,32);
-	5722982770f95d6e 983ecb86ac187b3b 980002d9326ec35f 6671fc9ce941fd62 W...p..n............2n..fq...A.b
+test.c:6 rsp_dump((unsigned char*) "hello world",11);
+        68656c6c6f20776f 726c64 hello.world
 
       r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f634 00000020 00000000 00002000 00000020 2001f654 00000020 00000004 000000ff 2001fb9c 00000020 00000000 08001f31 2001f5e0 2001906b 20019734 61000003 2001f5e0 00000000
+2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 20019027 20019034 21000003 2001f6a0 00000000
 breakpoint hit: rsp_dump
-test.c:57 rsp_dump(peer_pub,32);
-	14a3ddd2a10922f2 c5a4d6b32520e1ef db059bf833df5a8d 23b3e72647fa0ac1 ....................3.Z.....G...
+test.c:8 rsp_dump((unsigned char*) &number, 4);
+        55aa55aa U.U.
 
       r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f654 00000020 2001f673 2001f5b4 00000020 2001f654 00000020 00000004 000000ff 2001fb9c 00000020 00000000 0000007c 2001f5e0 2001907d 20019734 61000003 2001f5e0 00000000
-breakpoint hit: rsp_dump
-test.c:60 rsp_dump(secret,32);
-	2225b318b40facae e5efccbf53d9a38a 6a032da292f63dc1 09f29dd1aafcae16 ............S...j...............
-
-      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001f694 00000020 00000000 00002000 00000020 2001f654 00000020 00000004 000000ff 2001fb9c 00000020 00000000 08001f31 2001f5e0 200190c3 20019734 61000003 2001f5e0 00000000
-breakpoint hit: rsp_dump
-test.c:72 rsp_dump(peer_verifier,32);
-	14a3ddd2a10922f2 c5a4d6b32520e1ef db059bf833df5a8d 23b3e72647fa0ac1 ....................3.Z.....G...
-
-      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-2001993e 00000002 00000020 00000020 00000003 00000020 00000020 00008000 000000ff 2001fb9c 00000020 00000000 0000000a 2001f5e8 200191e1 20019734 01000003 2001f5e8 00000000
-breakpoint hit: rsp_dump
-test.c:142 rsp_dump((unsigned char*) "ok",2);
-	6f6b ok
-
-      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-00000000 00000000 00000000 200001c0 00000020 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6e0 20019069 20019736 61000003 2001f6e0 00000000
+2001f6a4 00000004 00000000 00000000 2001f6a4 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6a0 2001902b 20019036 21000003 2001f6a0 00000000
 breakpoint hit: rsp_finish
-clear breakpoint: @rsp_finish (0x20019736) OK
-clear breakpoint: @rsp_dump (0x20019734) OK
+clear breakpoint: @rsp_dump (0x20019034) OK
+clear breakpoint: @rsp_finish (0x20019036) OK
 continuing and detaching
 #+END_EXAMPLE
 
 ** finish function for .call()
-If you run your code on an ARMv7, you can call and link the code in rsp.s and rsp.h.
+If you run your code on an ARMv7, you can call and link the code in
+rsp.s and rsp.h. It only costs you 4 bytes.
 
 If you use C language for instrumentation GCC might optimize out very
 simple finish functions, to avoid this you can use the example below:
