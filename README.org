@@ -11,7 +11,7 @@ possible uses: on-device unit testing, fuzzing, reverse engineering.
 
 Currently you can load/dump memory, set/clear breakpoints, load extra
 information from an elf file, dispatch callbacks on breakpoints, and
-run the binary associated with the elf file.
+run the binary associated with the elf file, display source code associated with addresses.
 
 ** depends
 #+BEGIN_EXAMPLE
