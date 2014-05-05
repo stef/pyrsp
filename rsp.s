@@ -1,4 +1,4 @@
-/* vectors.s */
+/* rsp.s */
 .cpu cortex-m3
 .thumb
 
