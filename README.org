@@ -40,7 +40,7 @@ pip install pyelftools pyserial
      self.set_reg('r0',0)
 
      # continue and leave breakpoint intact
-     self.step_over_br('my_fun', br_cb)
+     self.step_over_br()
 
    # attach breakpoints to callbacks
    rsp.set_br('rsp_finish', rsp.finish_cb)

@@ -378,6 +378,17 @@ class RSP:
             i+=2
         return src_line
 
+    def step_over_br(self):
+        sym = self.br[self.regs['pc']]['sym']
+        cb  = self.br[self.regs['pc']]['cb']
+        self.del_br(self.regs['pc'], quiet=True)
+        sig = self.fetch('s')
+        if sig == 'T05':
+            self.set_br(sym, cb, quiet=True)
+        else:
+            print 'strange signal while stepi over br, abort'
+            sys.exit(1)
+
     def dump_cb(self):
         """ rsp_dump callback, hit if rsp_dump is called. Outputs to
             stdout the source line, and a hexdump of the memory
@@ -388,20 +399,13 @@ class RSP:
         if src_line:
             print "%s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
 
-        sym = self.br[self.regs['pc']]['sym']
         res_size = int(self.regs['r1'],16)
         if res_size < 1024: # for sanity
             ptr = int(self.regs['r0'],16)
             res = unhex(self.fetch('m%x,%x' % (ptr, res_size)))
             print hexdump(res)
 
-        self.del_br(self.regs['pc'], quiet=True)
-        sig = self.fetch('s')
-        if sig == 'T05':
-            self.set_br(sym, self.dump_cb, quiet=True)
-        else:
-            print 'strange signal while stepi over br, abort'
-            sys.exit(1)
+        self.step_over_br()
 
     def load(self, verify):
         """ loads binary belonging to elf to beginning of .text
