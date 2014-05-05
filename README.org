@@ -18,7 +18,21 @@ run the binary associated with the elf file.
 pip install pyelftools pyserial
 #+END_EXAMPLE
 
-** API
+** python example
+#+BEGIN_EXAMPLE python
+   from rsp import RSP
+   rsp = RSP('/dev/ttyACM0', 'test') # expexts test.elf and test.bin
+                                     # to exist
+   rsp.load() # load test.bin into workarea (.text segment)
+
+   # attach breakpoints to callbacks
+   rsp.set_br('rsp_finish', rsp.finish_cb)
+   rsp.set_br('rsp_dump', rsp.dump_cb)
+
+   # run binary
+   rsp.run()
+#+END_EXAMPLE
+** Python API
 #+BEGIN_EXAMPLE python
 RSP(self, port, file_prefix=None, verbose=False)
 #+END_EXAMPLE
