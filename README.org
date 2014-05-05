@@ -15,8 +15,6 @@ pip install pyelftools pyserial
 #+END_EXAMPLE
 
 ** API
-the pyrsp initializer handles all the initialization, it scans and
-connects to the device automatically, reads elf header information:
 #+BEGIN_EXAMPLE python
 RSP(self, port, file_prefix=None, verbose=False)
 #+END_EXAMPLE
