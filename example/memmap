@@ -1,0 +1,40 @@
+/* Entry Point */
+ENTRY(test)
+
+/* Highest address of the user mode stack */
+_estack = 0x20020000;    /* end of code */
+
+/* Generate a link error if heap and stack don't fit into RAM */
+_Min_Heap_Size = 0;      /* required amount of heap  */
+_Min_Stack_Size = 0x200; /* required amount of stack */
+
+/* Specify the memory areas */
+MEMORY
+{
+  RAM (xrw)       : ORIGIN = 0x20019000, LENGTH = 12K
+}
+
+/* Define output sections */
+SECTIONS
+{
+  .text :
+  {
+    . = ALIGN(4);
+    *(.text)           /* .text sections (code) */
+    *(.text*)          /* .text* sections (code) */
+    *(.rodata)         /* .rodata sections (constants, strings, etc.) */
+    *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
+    *(.glue_7)         /* glue arm to thumb code */
+    *(.glue_7t)        /* glue thumb to arm code */
+	*(.eh_frame)
+
+    KEEP (*(.init))
+    KEEP (*(.fini))
+
+    . = ALIGN(4);
+    _etext = .;        /* define a global symbols at end of code */
+  } >RAM
+
+  /* PROVIDE(_stack = ORIGIN(RAM) + LENGTH(RAM)); */
+  PROVIDE(_stack = ORIGIN(RAM));
+}
