@@ -21,7 +21,7 @@ pip install pyelftools pyserial
 ** python example
 #+BEGIN_EXAMPLE python
    from rsp import RSP
-   rsp = RSP('/dev/ttyACM0', 'test') # expexts test.elf and test.bin
+   rsp = RSP('/dev/ttyACM0', 'test') # expects test.elf and test.bin
                                      # to exist
    rsp.load() # load test.bin into workarea (.text segment)
 
@@ -29,8 +29,14 @@ pip install pyelftools pyserial
    rsp.set_br('rsp_finish', rsp.finish_cb)
    rsp.set_br('rsp_dump', rsp.dump_cb)
 
+   # set up some data
+   rsp.store("aaaaa", 0x20000000)
+
    # run binary
    rsp.run()
+
+   # retrieve some data
+   print rsp.dump(0x20000000, 10)
 #+END_EXAMPLE
 ** Python API
 #+BEGIN_EXAMPLE python
