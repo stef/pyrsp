@@ -10,7 +10,7 @@ CFLAGS = -DTEST -mno-unaligned-access -g -Wall -Werror -Os \
 
 LDFLAGS = -mthumb -mcpu=cortex-m3 -fno-common -Tmemmap -nostartfiles -Wl,--gc-sections -Wl,-z,relro
 
-objs = test.o rsp.o
+objs = test.o ../rsp.o
 
 all : test.bin
 
