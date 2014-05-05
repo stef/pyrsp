@@ -24,47 +24,197 @@ rsp = RSP('/dev/ttyACM0', workarea=0x20010000, verbose=True)
 The most interesting function is RSP.call():
 
 #+BEGIN_EXAMPLE python
-def call(self,
-         file_prefix,
-         start='test',
-         finish='finish',
-         results='result',
-         res_size=10,
-         verbose=True,
-         verify=True):
+RSP(self, port, file_prefix=None, verbose=False)
 #+END_EXAMPLE
+reads the elf file if given by file_prefix, connects to the debugging
+device specified by port, and initializes itself.
 
-1. Loads the '.bin' file given by file_prefix into the device at the workarea of the device.
-2. If verify is set, the workarea is read out and compared to the original '.bin' file.
-3. Using the '.elf' file it sets a breakpoint on the function specified by finish,
-4. and starts execution at the function specified by start.
-5. After the breakpoint of finish is hit, it removes it,
-6. and if the symbol specified in results exists, it returns the memory pointed by it limited by the res_size parameter.
+#+BEGIN_EXAMPLE python
+send(self, data, retries=50)
+#+END_EXAMPLE
+sends data via the RSP protocol to the device
+
+#+BEGIN_EXAMPLE python
+readpkt(self)
+#+END_EXAMPLE
+blocks until it reads an RSP packet, and returns it's data
+
+#+BEGIN_EXAMPLE python
+store(self, data, addr=None)
+#+END_EXAMPLE
+stores data at addr if given otherwise at beginning of .text segment
+aka self.workarea
+
+#+BEGIN_EXAMPLE python
+dump(self, size, addr = None)
+#+END_EXAMPLE
+dumps data from addr if given otherwise at beginning of .text segment
+aka self.workarea
+
+#+BEGIN_EXAMPLE python
+fetch(self,data)
+#+END_EXAMPLE
+sends data and returns reply
+
+#+BEGIN_EXAMPLE python
+fetchOK(self,data,ok='OK')
+#+END_EXAMPLE
+sends data and expects success
+
+#+BEGIN_EXAMPLE python
+set_reg(self, reg, val)
+#+END_EXAMPLE
+sets value of register reg to val on device
+
+#+BEGIN_EXAMPLE python
+refresh_regs(self)
+#+END_EXAMPLE
+loads and caches values of the registers on the device
+
+#+BEGIN_EXAMPLE python
+dump_regs(self)
+#+END_EXAMPLE
+refreshes and dumps registers via stdout
+
+#+BEGIN_EXAMPLE python
+attach(self, id='1')
+#+END_EXAMPLE
+attaches to blackmagic jtag debugger in swd mode
+
+#+BEGIN_EXAMPLE python
+run(self, start=None)
+#+END_EXAMPLE
+sets pc to start if given or to entry address from elf header, passes
+control to the device and handles breakpoints
+
+#+BEGIN_EXAMPLE python
+handle_br(self)
+#+END_EXAMPLE
+dumps register on breakpoint/signal, continues if unknown,
+otherwise it calls the appropriate callback.
+
+#+BEGIN_EXAMPLE python
+set_br(self, sym, cb, quiet=False)
+#+END_EXAMPLE
+sets a breakpoint at symbol sym, and install callback cb for it
+
+#+BEGIN_EXAMPLE python
+del_br(self, addr, quiet=False)
+#+END_EXAMPLE
+deletes breakpoint at address addr
+
+#+BEGIN_EXAMPLE python
+finish_cb(self)
+#+END_EXAMPLE
+final breakpoint, if hit it deletes all breakpoints, continues running
+the cpu, and detaches from the debugging device
+
+#+BEGIN_EXAMPLE python
+get_src_line(self, addr)
+#+END_EXAMPLE
+returns the source-code line associated with address addr
+
+#+BEGIN_EXAMPLE python
+dump_cb(self)
+#+END_EXAMPLE
+rsp_dump callback, hit if rsp_dump is called. Outputs to stdout the
+source line, and a hexdump of the memory pointed by $r0 with a size of
+$r1 bytes. Then it resumes running.
+
+#+BEGIN_EXAMPLE python
+load(self, verify)
+#+END_EXAMPLE
+loads binary belonging to elf to beginning of .text segment (alias
+self.workarea), and if verify is set read it back and check if it
+matches with the uploaded binary.
+
+#+BEGIN_EXAMPLE python
+call(self, start=None, finish='rsp_finish', dump='rsp_dump', verify=True)
+#+END_EXAMPLE
+    1. Loads the '.bin' file given by self.file_prefix into the device at the workarea (.text seg) of the device.
+    2. Using the '.elf' file it sets a breakpoint on the function specified by rsp_finish and rsp_dump,
+    3. and starts execution at the function specified by start or elf e_entry.
+    4. After the breakpoint of rsp_dump is hit, r1 bytes are dumped from the buffer pointed to by r0.
+    5. After the breakpoint of rsp_finish is hit, it removes all break points, and detaches
+
+#+BEGIN_EXAMPLE python
+read_elf(self, fname)
+#+END_EXAMPLE
+reads out the entry point, the .text segment addres, the symbol table,
+and the debugging information from the elf header.
 
 ** Example session
 #+BEGIN_EXAMPLE
-time ./rsp.py /dev/ttyACM1
+./pysrp/rsp.py /dev/ttyACM0 test
+work area: 0x20019000
+entry: 0x20019241
+Available Targets:
+No. Att Driver
+ 1      STM32F4xx
+
       r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-00000000 200194e4 200194d9 200001c0 00000000 00000000 00000002 00000000 00000000 00000000 00000000 00000000 08001f31 2001fca8 20019045 20019008 6100000b 2001fca8 00000000
-result load test.bin
+2001f734 00000020 00000000 00002000 00000020 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6e0 20019069 20019724 61000003 2001f6e0 00000000
+load test.bin
 verify test OK
-set final break: @finish (0x20019000) OK
-old '\x02K'
-set new pc: @test (0x20019010)
+set break: @rsp_finish (0x20019736) OK
+set break: @rsp_dump (0x20019734) OK
+set new pc: @test (0x20019241) OK
 continuing
-breakpoint hit
+
       r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
-0000001f 200194e4 200194d9 7c000000 00000000 00000000 00000002 00000000 00000000 00000000 00000000 00000000 08001f31 2001fc98 20019045 20019000 6100000b 2001fc98 00000000
-reset breakpoint: @finish (0x20019000) OK
-'fail\x00\x01\x02\x03\x05\x05\x00\xd9\x94\x01 \x00'
-./rsp.py /dev/ttyACM1  0.27s user 0.06s system 14% cpu 2.190 total
+2001f5f4 00000020 2001f633 2001f5b4 200001c0 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 0000007c 2001f5e0 20019035 20019734 21000003 2001f5e0 00000000
+breakpoint hit: rsp_dump
+test.c:49 rsp_dump(e,32);
+	2f46df7ea6607280 7defedd55ed678c5 97d1cf4c6b4311ef f4e5ff721d565398 .F....r.......x....LkC.....r.VS.
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001f614 00000020 2001f633 2001f5b4 200001c0 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 0000007c 2001f5e0 2001903d 20019734 21000003 2001f5e0 00000000
+breakpoint hit: rsp_dump
+test.c:50 rsp_dump(pub,32);
+	5722982770f95d6e 983ecb86ac187b3b 980002d9326ec35f 6671fc9ce941fd62 W...p..n............2n..fq...A.b
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001f634 00000020 00000000 00002000 00000020 2001f654 00000020 00000004 000000ff 2001fb9c 00000020 00000000 08001f31 2001f5e0 2001906b 20019734 61000003 2001f5e0 00000000
+breakpoint hit: rsp_dump
+test.c:57 rsp_dump(peer_pub,32);
+	14a3ddd2a10922f2 c5a4d6b32520e1ef db059bf833df5a8d 23b3e72647fa0ac1 ....................3.Z.....G...
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001f654 00000020 2001f673 2001f5b4 00000020 2001f654 00000020 00000004 000000ff 2001fb9c 00000020 00000000 0000007c 2001f5e0 2001907d 20019734 61000003 2001f5e0 00000000
+breakpoint hit: rsp_dump
+test.c:60 rsp_dump(secret,32);
+	2225b318b40facae e5efccbf53d9a38a 6a032da292f63dc1 09f29dd1aafcae16 ............S...j...............
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001f694 00000020 00000000 00002000 00000020 2001f654 00000020 00000004 000000ff 2001fb9c 00000020 00000000 08001f31 2001f5e0 200190c3 20019734 61000003 2001f5e0 00000000
+breakpoint hit: rsp_dump
+test.c:72 rsp_dump(peer_verifier,32);
+	14a3ddd2a10922f2 c5a4d6b32520e1ef db059bf833df5a8d 23b3e72647fa0ac1 ....................3.Z.....G...
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+2001993e 00000002 00000020 00000020 00000003 00000020 00000020 00008000 000000ff 2001fb9c 00000020 00000000 0000000a 2001f5e8 200191e1 20019734 01000003 2001f5e8 00000000
+breakpoint hit: rsp_dump
+test.c:142 rsp_dump((unsigned char*) "ok",2);
+	6f6b ok
+
+      r0       r1       r2       r3       r4       r5       r6       r7       r8       r9      r10      r11      r12       sp       lr       pc     xpsr      msp      psp
+00000000 00000000 00000000 200001c0 00000020 2001f754 00000020 00008000 000000ff 2001fb9c 00000020 00000000 08001f31 2001f6e0 20019069 20019736 61000003 2001f6e0 00000000
+breakpoint hit: rsp_finish
+clear breakpoint: @rsp_finish (0x20019736) OK
+clear breakpoint: @rsp_dump (0x20019734) OK
+continuing and detaching
 #+END_EXAMPLE
 
 ** finish function for .call()
-GCC might optimize out very simple finish functions, to avoid this you
-can use the example below:
+If you run your code on an ARMv7, you can call and link the code in rsp.s and rsp.h.
+
+If you use C language for instrumentation GCC might optimize out very
+simple finish functions, to avoid this you can use the example below:
 #+BEGIN_EXAMPLE
-__attribute__ ((noinline)) void finish(void) {
+__attribute__ ((noinline)) void rsp_finish(void) {
   while(1);
+}
+__attribute__ ((noinline)) void rsp_dump(void) {
+  __asm__("nop;");
 }
 #+END_EXAMPLE
