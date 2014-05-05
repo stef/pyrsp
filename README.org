@@ -215,7 +215,7 @@ clear breakpoint: @rsp_finish (0x20019036) OK
 continuing and detaching
 #+END_EXAMPLE
 
-** finish function for .call()
+** trigger functions for breakpoints
 If you run your code on an ARMv7, you can call and link the code in
 rsp.s and rsp.h. It only costs you 4 bytes.
 
