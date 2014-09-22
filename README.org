@@ -1,30 +1,37 @@
 * pyrsp
 
-pyrsp is a very simple implementation around the [[https://sourceware.org/gdb/current/onlinedocs/gdb/Remote-Protocol.html#Remote-Protocol][GDB Remote serial
-protocol]]. Currently it only supports the [[https://github.com/gsmcmullin/blackmagic][Blackmagic JTAG debugger]]. But
-it should be very simple to support other devices that speak this
-protocol e.g. buspirates via OpenOCD. Memory/register settings are
-currently hard-coded for ARM Cortex M3 devices. But it should be no
-problem to adapt to other HW devices.
+pyrsp v0.2 is a simple wrapper around the [[https://sourceware.org/gdb/current/onlinedocs/gdb/Remote-Protocol.html#Remote-Protocol][GDB Remote serial
+protocol]]. Currently ARM Cortex M3 devices can be tested with the
+[[https://github.com/gsmcmullin/blackmagic][Blackmagic JTAG debugger]] and i386 and AMD64 qemu targets are supported
+with qemu. But it should be very simple to support other devices that
+speak this protocol e.g. buspirates via OpenOCD.
 
-possible uses: on-device unit testing, fuzzing, reverse engineering.
+Possible uses: on-device unit testing, fuzzing, reverse engineering.
 
 Currently you can load/dump memory, set/clear breakpoints, load extra
-information from an elf file, dispatch callbacks on breakpoints, run
-the binary associated with the elf file and display source code
-associated with addresses.
+information (symbols, debug info, .text segment) from an elf file,
+dispatch callbacks on breakpoints, run the binary associated with the
+elf file and display source code associated with addresses.
 
 ** depends
 #+BEGIN_EXAMPLE
 pip install pyelftools pyserial
 #+END_EXAMPLE
 
+** changes
+*** v0.2
+    - refactored rsp parts into elf.py and utils.py
+    - support for i386 and AMD64 qemu targets
+    - timeout in readpkt
+    - extract .text directly from elf, do not require .bin
+    - support slice operator for memory ops
+    - use reported packetSize
+    - threadinfo support
 ** python example
 #+BEGIN_EXAMPLE python
    from rsp import RSP
-   rsp = RSP('/dev/ttyACM0', 'test') # expects test.elf and test.bin
-                                     # to exist
-   rsp.load() # load test.bin into workarea (.text segment)
+   rsp = RSP('/dev/ttyACM0', 'test.elf') # expects test.elf to exist
+   rsp.load() # load test.elf into workarea (.text segment)
 
    def br_cb(self):
      # dump regs
@@ -102,9 +109,9 @@ continuing and detaching
 #+END_EXAMPLE
 ** Python API
 #+BEGIN_EXAMPLE python
-RSP(self, port, file_prefix=None, verbose=False)
+RSP(self, port, elffile=None, verbose=False)
 #+END_EXAMPLE
-reads the elf file if given by file_prefix, connects to the debugging
+reads the elf file if given by elffile, connects to the debugging
 device specified by port, and initializes itself.
 
 #+BEGIN_EXAMPLE python
@@ -113,9 +120,9 @@ send(self, data, retries=50)
 sends data via the RSP protocol to the device
 
 #+BEGIN_EXAMPLE python
-readpkt(self)
+readpkt(self, timeout=0)
 #+END_EXAMPLE
-blocks until it reads an RSP packet, and returns it's data
+blocks until it reads an RSP packet and returns it's data or timeout>0 expires
 
 #+BEGIN_EXAMPLE python
 store(self, data, addr=None)
@@ -155,9 +162,10 @@ dump_regs(self)
 refreshes and dumps registers via stdout
 
 #+BEGIN_EXAMPLE python
-attach(self, id='1')
+connect(self)
 #+END_EXAMPLE
-attaches to blackmagic jtag debugger in swd mode
+Implements device specific connection procedure, e.g. attaches to
+blackmagic jtag debugger in swd mode
 
 #+BEGIN_EXAMPLE python
 run(self, start=None)
@@ -209,17 +217,28 @@ matches with the uploaded binary.
 #+BEGIN_EXAMPLE python
 call(self, start=None, finish='rsp_finish', dump='rsp_dump', verify=True)
 #+END_EXAMPLE
-    1. Loads the '.bin' file given by self.file_prefix into the device at the workarea (.text seg) of the device.
-    2. Using the '.elf' file it sets a breakpoint on the function specified by rsp_finish and rsp_dump,
-    3. and starts execution at the function specified by start or elf e_entry.
-    4. After the breakpoint of rsp_dump is hit, r1 bytes are dumped from the buffer pointed to by r0.
-    5. After the breakpoint of rsp_finish is hit, it removes all break points, and detaches
+    1. Loads the .text segment given by self.elf into the device at the workarea (.text seg) of the device.
+    2. and starts execution at the function specified by start or elf e_entry.
+    3. After the breakpoint of rsp_dump is hit, r1 bytes are dumped from the buffer pointed to by r0.
+    4. After the breakpoint of rsp_finish is hit, it removes all break points, and detaches
 
 #+BEGIN_EXAMPLE python
-read_elf(self, fname)
+get_thread_info()
 #+END_EXAMPLE
-reads out the entry point, the .text segment addres, the symbol table,
-and the debugging information from the elf header.
+returns a tuple consisting of:
+   - current thread id,
+   - extra thread info,
+   - list of all threads
+
+#+BEGIN_EXAMPLE python
+rsp[0:100]
+#+END_EXAMPLE
+returns 1st 100 bytes from memory
+
+#+BEGIN_EXAMPLE python
+rsp[100]="hello world"
+#+END_EXAMPLE
+Stores the string "hello world" at address 100 in memory
 
 ** trigger functions for breakpoints
 If you run your code on an ARMv7, you can call and link the code in
