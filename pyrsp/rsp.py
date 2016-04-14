@@ -16,7 +16,7 @@
 
 # (C) 2014 by Stefan Marsiske, <s@ctrlc.hu>
 
-import os, time, sys, struct
+import os, time, sys, struct, socket
 activate_this = os.path.dirname(__file__)+'/../env/bin/activate_this.py'
 if os.path.exists(activate_this):
     execfile(activate_this, dict(__file__=activate_this))
@@ -24,6 +24,67 @@ if os.path.exists(activate_this):
 import serial
 from pyrsp.utils import hexdump, pack, unpack, unhex, switch_endian, split_by_n
 from pyrsp.elf import ELF
+from binascii import hexlify
+
+def Debugger(*args, **kwargs):
+    if os.path.exists(args[0]):
+        return BlackMagic(*args,**kwargs)
+    try:
+        int(args[0])
+    except:
+        print "cannot access", args[0]
+        sys.exit(0)
+    return STlink2(*args, **kwargs)
+
+class BlackMagic(object):
+    def __init__(self, port):
+        self.__dict__['port'] = serial.Serial(port, 115200, timeout=1)
+
+    def setup(self, rsp):
+        rsp.send('qRcmd,737764705f7363616e')
+        pkt=rsp.readpkt()
+        while pkt!='OK':
+            if pkt[0]!='O':
+                raise ValueError('not O: %s' % pkt)
+            if rsp.verbose:
+                print unhex(pkt[1:-1])
+            pkt=rsp.readpkt()
+        rsp.fetchOK('vAttach;1','T05')
+
+    def write(self, data):
+        return self.port.write(data)
+
+    def read(self, size=1):
+        return self.port.read(size)
+
+    def close(self, rsp):
+        rsp.fetchOK('D')
+        self.port.close()
+
+class STlink2(object):
+    def __init__(self, port):
+        self.__dict__['port'] = socket.socket( socket.AF_INET,socket.SOCK_STREAM)
+        self.port.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.port.settimeout(1)
+        self.port.connect(('localhost',int(port)))
+
+    def setup(self, rsp):
+        pass
+
+    def write(self, data):
+        i = 0
+        while(i<len(data)):
+            i += self.port.send(data[i:])
+        return i
+
+    def read(self):
+        try:
+            return self.port.recv(1)
+        except:
+            return ''
+
+    def close(self):
+        self.port.close()
 
 class RSP(object):
     def __init__(self, port, elffile=None, verbose=False):
@@ -34,7 +95,7 @@ class RSP(object):
         self.__dict__['br'] = {}
         self.__dict__['verbose'] = verbose
         # open serial connection
-        self.__dict__['port'] = serial.Serial(port, 115200, timeout=1)
+        self.__dict__['port'] = Debugger(port) #serial.Serial(port, 115200, timeout=1)
         # parse elf for symbol table, entry point and work area
         self.__dict__['elf'] = ELF(elffile) if elffile else None
         if verbose and self.elf:
@@ -65,7 +126,7 @@ class RSP(object):
         discards = []
         while res!='+' and retries>0:
             discards.append(res)
-            self.port.write(pack(data))
+            #self.port.write(pack(data))
             retries-=1
             res = self.port.read()
         if len(discards)>0 and self.verbose: print 'send discards', discards
@@ -108,9 +169,9 @@ class RSP(object):
             .text segment aka self.elf.workarea"""
         if addr==None:
             addr=self.elf.workarea
-        for pkt in split_by_n(data, 400): # TODO should pktmaxsize, see todo in __init__
-            pktlen = len(pkt)
-            self.fetchOK('X%x,%x:%s' % (addr, pktlen, pkt))
+        for pkt in split_by_n(hexlify(data), int(self.feats['PacketSize'],16) - 20):
+            pktlen = len(pkt)/2
+            self.fetchOK('M%x,%x:%s' % (addr, pktlen, pkt))
             addr+=pktlen
 
     def __getslice__(self, i, j):
@@ -135,7 +196,7 @@ class RSP(object):
             addr=self.elf.workarea
         rd = []
         i=0
-        bsize = int(self.feats['PacketSize'])
+        bsize = int(self.feats['PacketSize'], 16)
         while(i<size):
             bsize = bsize if i+bsize<size else size - i
             self.send('m%x,%x' % (addr+i, bsize))
@@ -161,7 +222,7 @@ class RSP(object):
             self.regs[reg]=val
         if isinstance(val, int):
             self.regs[reg]='%x' % val
-        self.fetchOK("G%s" % ''.join([switch_endian(self.regs[r]) for r in self.registers]))
+        self.fetchOK("G%s" % ''.join([switch_endian(self.regs[r]) for r in self.registers if r in self.regs]))
 
     def refresh_regs(self):
         """ loads and caches values of the registers on the device """
@@ -205,7 +266,7 @@ class RSP(object):
 
         if self.verbose: print "continuing"
         sig = self.fetch('c')
-        while sig == 'T05':
+        while sig in ['T05', 'S05']:
             self.handle_br()
             sig = self.fetch('c')
 
@@ -225,8 +286,7 @@ class RSP(object):
                 print 'lr', self.regs['lr']
             self.dump_regs()
 
-        self.fetchOK('D')
-        self.port.close()
+        self.port.close(self)
         sys.exit(0)
 
     def handle_br(self):
@@ -422,11 +482,11 @@ class CortexM3(RSP):
             print "%s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
         else:
             print 'sp', format(struct.unpack(">I", self.getreg(4, int(self.regs['sp'],16) + 24))[0], '08x')
-        self.fetchOK('D')
-        self.port.close()
+
+        self.port.close(self)
         sys.exit(0)
 
-    def connect(self, id='1'):
+    def connect(self):
         """ attaches to blackmagic jtag debugger in swd mode """
         # ignore redundant stuff
         tmp = self.readpkt(timeout=1)
@@ -442,15 +502,8 @@ class CortexM3(RSP):
         #print self.fetch('qXfer:memory-map:read::0,3fb')
         #print self.fetch('qXfer:memory-map:read::364,3fb')
 
-        self.send('qRcmd,737764705f7363616e')
-        pkt=self.readpkt()
-        while pkt!='OK':
-            if pkt[0]!='O':
-                raise ValueError('not O: %s' % pkt)
-            if self.verbose:
-                print unhex(pkt[1:-1])
-            pkt=self.readpkt()
-        self.fetchOK('vAttach;%s' % id,'T05')
+        self.port.setup(self)
+
         addr=struct.unpack(">I", self.getreg(4, 0x0800000c))[0] - 1
         self.br[format(addr, '08x')]={'sym': "FaultHandler",
                              'cb': self.checkfault}
