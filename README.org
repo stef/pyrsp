@@ -19,6 +19,10 @@ pip install pyelftools pyserial
 #+END_EXAMPLE
 
 ** changes
+*** v0.3
+    - support for STLink2 devices
+    - rudimentary support for dumping fault status and mpu registers
+    - fixes
 *** v0.2
     - refactored rsp parts into elf.py and utils.py
     - support for i386 and AMD64 qemu targets
