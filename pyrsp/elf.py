@@ -32,7 +32,8 @@ class FCache():
         if not self.name or self.name != fname:
             if self.name:
                 self.fd.close()
-            self.fd = open(fname,'r')
+            try: self.fd = open(fname,'r')
+            except: return ''
             self.name = fname
 
         self.fd.seek(0)
@@ -113,7 +114,7 @@ class ELF:
                 state = entry.state
                 if state:
                     fname = lineprogram['file_entry'][state.file - 1].name
-                    line = self.fcache.get_src_lines(fname, state.line)
+                    line = self.fcache.get_src_lines(cu_filename, state.line)
                     src_map["%08x" % state.address] = {'file': fname, 'lineno': state.line, 'line': line}
                     try:
                         src_map["%s:%s" % (fname, state.line)].append({'addr': "%08x" % state.address, 'line': line})
