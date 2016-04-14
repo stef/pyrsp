@@ -16,7 +16,7 @@
 
 # (C) 2014 by Stefan Marsiske, <s@ctrlc.hu>
 
-import os, time, sys
+import os, time, sys, struct
 activate_this = os.path.dirname(__file__)+'/../env/bin/activate_this.py'
 if os.path.exists(activate_this):
     execfile(activate_this, dict(__file__=activate_this))
@@ -43,7 +43,7 @@ class RSP(object):
 
         # check for signal from running target
         tmp = self.readpkt(timeout=1)
-        if tmp: print tmp
+        if tmp: print 'helo', tmp
 
         self.send('qSupported')
         feats = self.readpkt()
@@ -68,7 +68,7 @@ class RSP(object):
             self.port.write(pack(data))
             retries-=1
             res = self.port.read()
-        if len(discards)>0: print 'send discards', discards
+        if len(discards)>0 and self.verbose: print 'send discards', discards
         if retries==0:
             raise ValueError("retry fail")
         #print 'sent', data
@@ -85,7 +85,7 @@ class RSP(object):
             c=self.port.read()
             if timeout>0 and start+timeout < time.time():
                 return
-        if len(discards)>0: print 'discards', discards
+        if len(discards)>0 and self.verbose: print 'discards', discards
         res=[c]
 
         while True:
@@ -209,13 +209,25 @@ class RSP(object):
             self.handle_br()
             sig = self.fetch('c')
 
-        print 'strange signal', sig
-        src_line = self.get_src_line(int(self.regs['pc'],16) - 3)
-        if src_line:
-            print "0 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
-        src_line = self.get_src_line(int(self.regs['lr'],16) - 3)
-        if src_line:
-            print "1 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
+        if sig!='T0B': print 'strange signal', sig
+        if hasattr(self, 'checkfault'):
+            self.checkfault()
+        else:
+            src_line = self.get_src_line(int(self.regs['pc'],16 - 1))
+            if src_line:
+                print "0 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
+            else:
+                print 'pc', self.regs['pc']
+            src_line = self.get_src_line(int(self.regs['lr'],16) -3)
+            if src_line:
+                print "1 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
+            else:
+                print 'lr', self.regs['lr']
+            self.dump_regs()
+
+        self.fetchOK('D')
+        self.port.close()
+        sys.exit(0)
 
     def handle_br(self):
         """ dumps register on breakpoint/signal, continues if unknown,
@@ -291,7 +303,7 @@ class RSP(object):
         cb  = self.br[self.regs['pc']]['cb']
         self.del_br(self.regs['pc'], quiet=True)
         sig = self.fetch('s')
-        if sig == 'T05':
+        if sig in ['T05', 'T0B']:
             self.set_br(sym, cb, quiet=True)
         else:
             print 'strange signal while stepi over br, abort'
@@ -308,7 +320,7 @@ class RSP(object):
             print "%s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
 
         res_size = int(self.regs['r1'],16)
-        if res_size < 1024: # for sanity
+        if res_size <= 1024: # for sanity
             ptr = int(self.regs['r0'],16)
             res = unhex(self.fetch('m%x,%x' % (ptr, res_size)))
             print hexdump(res, ptr)
@@ -346,6 +358,7 @@ class RSP(object):
         self.refresh_regs()
         self.load(verify)
         self.set_br(finish, self.finish_cb)
+        self.set_br('rsp_detach', self.finish_cb)
         self.set_br(dump, self.dump_cb)
         self.run(start)
 
@@ -363,8 +376,10 @@ class RSP(object):
         if self.dump(2048) != '\x00' * 2048:
             raise ValueError('cannot erase work area')
 
+from cortexhwregs import *
 class CortexM3(RSP):
     def __init__(self, *args,**kwargs):
+
         self.arch = {'regs': ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8",
                               "r9", "r10", "r11", "r12", "sp", "lr", "pc",
                               "xpsr", "msp", "psp", "special"],
@@ -375,27 +390,84 @@ class CortexM3(RSP):
     def get_thread_info(self):
         return
 
+    def getreg(self,size,ptr):
+        tmp = self.fetch('m%x,%x' % (ptr, size))
+        return unhex(switch_endian(tmp))
+
+    def printreg(self, reg):
+        return [n if type(v)==bool and v==True else (n,v if n!='ADDR' else hex(v<<5)) for n,v in reg.items() if v]
+
+    def dump_mpu(self):
+        print 'mpu_cr', self.printreg(mpu_cr.parse(self.getreg(4, MPU_CR)))
+        for region in xrange(8):
+            self.store(struct.pack("<I", region), MPU_RNR)
+            print region,
+            print self.printreg(mpu_rbar.parse(self.getreg(4, MPU_RBAR))),
+            print self.printreg(mpu_rasr.parse(self.getreg(4, MPU_RASR)))
+
+    def checkfault(self):
+        # impl check, only dumps now.
+        #sig = self.fetch('s')
+        #print 'sig', sig
+        self.dump_mpu()
+        print 'hfsr=', self.printreg(scb_hfsr.parse(self.getreg(4, SCB_HFSR)))
+        print 'icsr=', self.printreg(scb_icsr.parse(self.getreg(4, SCB_ICSR)))
+        print 'shcsr=', self.printreg(scb_shcsr.parse(self.getreg(4, SCB_SHCSR)))
+        print 'cfsr=', self.printreg(scb_cfsr.parse(self.getreg(4, SCB_CFSR)))
+        print 'MMFAR=', hex(struct.unpack(">I", self.getreg(4, SCB_MMFAR))[0])
+        print 'BFAR=', hex(struct.unpack(">I", self.getreg(4, SCB_BFAR))[0])
+        print
+        src_line = self.get_src_line(struct.unpack(">I", self.getreg(4, int(self.regs['sp'],16) + 24))[0])
+        if src_line:
+            print "%s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
+        else:
+            print 'sp', format(struct.unpack(">I", self.getreg(4, int(self.regs['sp'],16) + 24))[0], '08x')
+        self.fetchOK('D')
+        self.port.close()
+        sys.exit(0)
+
     def connect(self, id='1'):
         """ attaches to blackmagic jtag debugger in swd mode """
+        # ignore redundant stuff
+        tmp = self.readpkt(timeout=1)
+        while(tmp):
+            tmp = self.readpkt(timeout=1)
         # enable extended mode
         self.fetchOK('!')
 
         # setup registers TODO
         # registers should be parsed from the output of, see target.xml
-        #self.fetch('qXfer:features:read:target.xml:0,3fb')
-        #self.fetch('Xfer:features:read:target.xml:3cf,3fb')
-        #self.fetch('qXfer:memory-map:read::0,3fb')
-        #self.fetch('qXfer:memory-map:read::364,3fb')
+        #print self.fetch('qXfer:features:read:target.xml:0,3fb')
+        #print self.fetch('Xfer:features:read:target.xml:3cf,3fb')
+        #print self.fetch('qXfer:memory-map:read::0,3fb')
+        #print self.fetch('qXfer:memory-map:read::364,3fb')
 
         self.send('qRcmd,737764705f7363616e')
         pkt=self.readpkt()
         while pkt!='OK':
             if pkt[0]!='O':
                 raise ValueError('not O: %s' % pkt)
-            pkt=self.readpkt()
             if self.verbose:
                 print unhex(pkt[1:-1])
+            pkt=self.readpkt()
         self.fetchOK('vAttach;%s' % id,'T05')
+        addr=struct.unpack(">I", self.getreg(4, 0x0800000c))[0] - 1
+        self.br[format(addr, '08x')]={'sym': "FaultHandler",
+                             'cb': self.checkfault}
+        tmp = self.fetch('Z1,%s,2' % format(addr, 'x'))
+        if tmp== 'OK':
+            print "set break: @%s (0x%s)" % ('FaultHandler', format(addr, 'x')), tmp
+            return
+
+        # vector_catch enable hard int bus stat chk nocp mm reset
+        self.send('qRcmd,766563746f725f636174636820656e61626c65206861726420696e742062757320737461742063686b206e6f6370206d6d207265736574')
+        pkt=self.readpkt()
+        while pkt!='OK':
+            if pkt[0]!='O':
+                raise ValueError('not O: %s' % pkt)
+            if self.verbose:
+                print unhex(pkt[1:-1])
+            pkt=self.readpkt()
 
 class AMD64(RSP):
     def __init__(self, *args,**kwargs):
@@ -443,7 +515,7 @@ def main():
 
     elffile=sys.argv[2] if len(sys.argv)>2 else None
 
-    rsp = arch(sys.argv[1], elffile, verbose=True)
+    rsp = arch(sys.argv[1], elffile, verbose=False)
 
     if elffile:
         rsp.call()
