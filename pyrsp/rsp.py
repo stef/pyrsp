@@ -103,7 +103,7 @@ class RSP(object):
             print "entry: 0x%x" % self.elf.entry
 
         # check for signal from running target
-        tmp = self.readpkt(timeout=1)
+        tmp = self.readpkt() #timeout=1)
         if tmp: print 'helo', tmp
 
         self.send('qSupported')
@@ -126,7 +126,6 @@ class RSP(object):
         discards = []
         while res!='+' and retries>0:
             discards.append(res)
-            #self.port.write(pack(data))
             retries-=1
             res = self.port.read()
         if len(discards)>0 and self.verbose: print 'send discards', discards
@@ -196,14 +195,15 @@ class RSP(object):
             addr=self.elf.workarea
         rd = []
         i=0
-        bsize = int(self.feats['PacketSize'], 16)
+        bsize = int(self.feats['PacketSize'], 16) / 2
         while(i<size):
             bsize = bsize if i+bsize<size else size - i
+            #print 'm%x,%x' % (addr+i, bsize)
             self.send('m%x,%x' % (addr+i, bsize))
             pkt=self.readpkt()
-            #print pkt
             rd.append(unhex(pkt))
             i+=bsize
+            #print i, size, 'pkt', pkt
         return ''.join(rd)
 
     def fetch(self,data):
@@ -286,6 +286,17 @@ class RSP(object):
                 print 'lr', self.regs['lr']
             self.dump_regs()
 
+        res = None
+        while not res:
+            res = self.port.read()
+        discards = []
+        retries = 20
+        while res!='+' and retries>0:
+            discards.append(res)
+            retries-=1
+            res = self.port.read()
+        if len(discards)>0 and self.verbose: print 'send discards', discards
+
         self.port.close(self)
         sys.exit(0)
 
@@ -330,8 +341,16 @@ class RSP(object):
         """ deletes breakpoint at address addr """
         sym = self.br[addr]['sym']
         #self.fetch('z0,%s,2' % addr)
-        tmp = self.fetch('X%s,2:%s' % (addr, self.br[addr]['old']))
-        if self.verbose and not quiet: print "clear breakpoint: @%s (0x%s)" % (sym, addr), tmp
+        if 'old' in self.br[addr]:
+            tmp = self.fetch('X%s,2:%s' % (addr, self.br[addr]['old']))
+            if self.verbose and not quiet: print "clear breakpoint: @%s (0x%s)" % (sym, addr), tmp
+        else:
+            tmp = self.fetch('Z0,%s,2' % addr)
+            if tmp!= 'OK':
+                print "failed to clear break: @%s (0x%s)" % ('FaultHandler', addr), tmp
+            elif self.verbose and not quiet:
+                print "clear break: @%s (0x%s)" % ('FaultHandler', addr), tmp
+
         del self.br[addr]
 
     def finish_cb(self):
@@ -380,7 +399,7 @@ class RSP(object):
             print "%s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
 
         res_size = int(self.regs['r1'],16)
-        if res_size <= 1024: # for sanity
+        if res_size <= 2048: # for sanity
             ptr = int(self.regs['r0'],16)
             res = unhex(self.fetch('m%x,%x' % (ptr, res_size)))
             print hexdump(res, ptr)
@@ -571,7 +590,25 @@ def main():
     rsp = arch(sys.argv[1], elffile, verbose=False)
 
     if elffile:
-        rsp.call()
+        try:
+            rsp.call()
+        except KeyboardInterrupt:
+            import traceback
+            traceback.print_exc()
+
+            res = None
+            while not res:
+                res = rsp.port.read()
+            discards = []
+            retries = 20
+            while res!='+' and retries>0:
+                discards.append(res)
+                retries-=1
+                res = rsp.port.read()
+            if len(discards)>0 and rsp.verbose: print 'send discards', discards
+
+            rsp.port.close(rsp)
+            sys.exit(1)
     else:
         print hexdump(rsp.dump(2048, 0),0)
         rsp.dump_regs()
