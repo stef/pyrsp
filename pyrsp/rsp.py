@@ -103,10 +103,16 @@ class RSP(object):
             print "entry: 0x%x" % self.elf.entry
 
         # check for signal from running target
-        tmp = self.readpkt() #timeout=1)
+        tmp = self.readpkt(timeout=1)
         if tmp: print 'helo', tmp
 
-        self.send('qSupported')
+        self.port.write(pack('+'))
+
+        tmp = self.readpkt(timeout=1)
+        if tmp: print 'helo', tmp
+
+        #self.send('qSupported')
+        self.port.write(pack('qSupported:multiprocess+;qRelocInsn+'))
         feats = self.readpkt()
         if feats:
             self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
@@ -614,6 +620,7 @@ def main():
         rsp.dump_regs()
         print rsp.get_thread_info()
         rsp.send('c')
+    rsp.port.close(rsp)
 
 if __name__ == "__main__":
     main()
