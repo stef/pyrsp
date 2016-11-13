@@ -111,8 +111,8 @@ class RSP(object):
         tmp = self.readpkt(timeout=1)
         if tmp: print 'helo', tmp
 
-        #self.send('qSupported')
-        self.port.write(pack('qSupported:multiprocess+;qRelocInsn+'))
+        self.send('qSupported')
+        #self.port.write(pack('qSupported:multiprocess+;qRelocInsn+'))
         feats = self.readpkt()
         if feats:
             self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
@@ -185,6 +185,17 @@ class RSP(object):
     def __setitem__(self, i,val):
         self.store(val,i)
 
+    def _get_feats(self):
+        self.port.write(pack('+'))
+
+        tmp = self.readpkt(timeout=1)
+        if tmp: print 'helo', tmp
+
+        self.send('qSupported')
+        feats = self.readpkt()
+        if feats:
+            self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
+
     def __getattr__(self, name):
         if name not in self.__dict__ or not self.__dict__[name]:
             if name in self.regs.keys():
@@ -192,6 +203,9 @@ class RSP(object):
         if name in self.__dict__.keys():
             return self.__dict__[name]
         else:
+            if name=='feats':
+                self._get_feats()
+                return self.__dict__[name]
             raise AttributeError, name
 
     def dump(self, size, addr = None):
@@ -242,6 +256,13 @@ class RSP(object):
         """ refreshes and dumps registers via stdout """
         self.refresh_regs()
         print ' '.join(["%s:%s" % (r, self.regs.get(r)) for r in self.registers])
+
+    prev_regs={}
+    def lazy_dump_regs(self):
+        """ refreshes and dumps registers via stdout """
+        self.refresh_regs()
+        print '[r]', ' '.join(["%s:%s" % (r, self.regs.get(r)) for r in self.registers if self.regs.get(r)!=self.prev_regs.get(r)])
+        self.prev_regs=self.regs
 
     def get_thread_info(self):
         tid = None
