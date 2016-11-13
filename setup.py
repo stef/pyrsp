@@ -12,7 +12,7 @@ def read(fname):
 
 setup(
     name = "pyrsp",
-    version = "0.3.1",
+    version = "0.3.2",
     author = "Stefan Marsiske",
     author_email = "s@ctrlc.hu",
     description = ("simple GDB remote serial protocol wrapper"),
@@ -26,7 +26,7 @@ setup(
           ],
        },
     long_description=read('README.org'),
-    install_requires = ("pyelftools", "pyserial"),
+    install_requires = ("pyelftools", "pyserial", "construct"),
     classifiers = ["Development Status :: 4 - Beta",
                    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
                    ],
