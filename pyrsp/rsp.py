@@ -104,12 +104,12 @@ class RSP(object):
 
         # check for signal from running target
         tmp = self.readpkt(timeout=1)
-        if tmp: print 'helo', tmp
+        if tmp and verbose: print 'helo', tmp
 
         self.port.write(pack('+'))
 
         tmp = self.readpkt(timeout=1)
-        if tmp: print 'helo', tmp
+        if tmp and verbose: print 'helo', tmp
 
         self.send('qSupported')
         #self.port.write(pack('qSupported:multiprocess+;qRelocInsn+'))
@@ -189,7 +189,7 @@ class RSP(object):
         self.port.write(pack('+'))
 
         tmp = self.readpkt(timeout=1)
-        if tmp: print 'helo', tmp
+        if tmp and self.verbose: print 'helo', tmp
 
         self.send('qSupported')
         feats = self.readpkt()
@@ -555,7 +555,7 @@ class CortexM3(RSP):
                              'cb': self.checkfault}
         tmp = self.fetch('Z1,%s,2' % format(addr, 'x'))
         if tmp== 'OK':
-            print "set break: @%s (0x%s)" % ('FaultHandler', format(addr, 'x')), tmp
+            #print "set break: @%s (0x%s)" % ('FaultHandler', format(addr, 'x')), tmp
             return
 
         # vector_catch enable hard int bus stat chk nocp mm reset
