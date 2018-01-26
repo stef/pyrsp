@@ -555,7 +555,7 @@ class CortexM3(RSP):
                              'cb': self.checkfault}
         tmp = self.fetch('Z1,%s,2' % format(addr, 'x'))
         if tmp== 'OK':
-            #print "set break: @%s (0x%s)" % ('FaultHandler', format(addr, 'x')), tmp
+            if self.verbose: print "set break: @%s (0x%s)" % ('FaultHandler', format(addr, 'x')), tmp
             return
 
         # vector_catch enable hard int bus stat chk nocp mm reset
