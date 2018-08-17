@@ -31,6 +31,24 @@ def unpack(pkt):
     pkt = pkt[1:-3]
     return pkt
 
+def decode_data(data):
+    """ decodes data from received packet, decoding algorithm is described
+here: https://sourceware.org/gdb/onlinedocs/gdb/Overview.html
+    """
+    if data.find('*') == -1:
+        return data
+    else:
+        decoded_data = ""
+        j = -1
+        for i, ch in enumerate(data):
+            if ch == '*' and data[i - 1] != '*':
+                n = ord(data[i + 1]) - 29
+                decoded_data = decoded_data + (data[i - 1] * n)
+                j = i + 1
+            elif i != j:
+                decoded_data = decoded_data + ch
+        return decoded_data
+
 def unhex(data):
     """ takes a hex encoded string and returns the binary representation """
     return ''.join(chr(int(x,16)) for x in split_by_n(data,2))
