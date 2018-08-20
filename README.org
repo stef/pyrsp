@@ -56,7 +56,7 @@ pip install pyelftools pyserial
    # attach breakpoints to callbacks
    rsp.set_br('rsp_finish', rsp.finish_cb)
    rsp.set_br('rsp_dump', rsp.dump_cb)
-   rsp.set_br('my_fun", br_cb)
+   rsp.set_br('my_fun', br_cb)
 
    # run binary in mainloop until rsp_finish is hit
    # or some unhandled signal occurs
