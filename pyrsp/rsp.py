@@ -301,6 +301,9 @@ class RSP(object):
             self.handle_br()
             sig = self.fetch('c')
 
+        if sig[0] == 'W': # The process exited, getting values is impossible
+            return
+
         if sig!='T0B': print 'strange signal', sig
         if hasattr(self, 'checkfault'):
             self.checkfault()
