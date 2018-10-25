@@ -292,7 +292,7 @@ class RSP(object):
             else:
                 entry = "%08x" % (self.elf.symbols[start] & ~1)
             if self.verbose: print "set new pc: @test (0x%s)" % entry,
-            self.set_reg('pc', entry)
+            self.set_reg(self.pc_reg, entry)
             if self.verbose: print 'OK'
 
         if self.verbose: print "continuing"
@@ -305,11 +305,11 @@ class RSP(object):
         if hasattr(self, 'checkfault'):
             self.checkfault()
         else:
-            src_line = self.get_src_line(int(self.regs['pc'],16 - 1))
+            src_line = self.get_src_line(int(self.regs[self.pc_reg],16 - 1))
             if src_line:
                 print "0 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
             else:
-                print 'pc', self.regs['pc']
+                print self.pc_reg, self.regs[self.pc_reg]
             src_line = self.get_src_line(int(self.regs['lr'],16) -3)
             if src_line:
                 print "1 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
@@ -337,13 +337,13 @@ class RSP(object):
         """
         print
         self.dump_regs()
-        if not self.regs['pc'] in self.br:
+        if not self.regs[self.pc_reg] in self.br:
             print "unknown break point passed"
             self.dump_regs()
             return
         if self.verbose:
-            print 'breakpoint hit:', self.br[self.regs['pc']]['sym']
-        self.br[self.regs['pc']]['cb']()
+            print 'breakpoint hit:', self.br[self.regs[self.pc_reg]]['sym']
+        self.br[self.regs[self.pc_reg]]['cb']()
 
     def set_br(self, sym, cb, quiet=False):
         """ sets a breakpoint at symbol sym, and install callback cb
@@ -409,9 +409,9 @@ class RSP(object):
         return src_line
 
     def step_over_br(self):
-        sym = self.br[self.regs['pc']]['sym']
-        cb  = self.br[self.regs['pc']]['cb']
-        self.del_br(self.regs['pc'], quiet=True)
+        sym = self.br[self.regs[self.pc_reg]]['sym']
+        cb  = self.br[self.regs[self.pc_reg]]['cb']
+        self.del_br(self.regs[self.pc_reg], quiet=True)
         sig = self.fetch('s')
         if sig in ['T05', 'T0B']:
             self.set_br(sym, cb, quiet=True)
@@ -495,6 +495,7 @@ class CortexM3(RSP):
                               "xpsr", "msp", "psp", "special"],
                      'endian': True,
                      'bitsize': 32}
+        self.pc_reg = "pc"
         super(CortexM3,self).__init__(*args, **kwargs)
 
     def get_thread_info(self):
@@ -584,6 +585,7 @@ class AMD64(RSP):
                               "mxcsr",],
                      'endian': False,
                      'bitsize': 64}
+        self.pc_reg = "rip"
         super(AMD64,self).__init__(*args, **kwargs)
 
 class i386(RSP):
@@ -597,6 +599,7 @@ class i386(RSP):
                              "mxcsr"],
                     'endian': False,
                     'bitsize': 32}
+        self.pc_reg = "eip"
         super(i386,self).__init__(*args, **kwargs)
 
 archmap={'amd64': AMD64, "x86_64": AMD64, "i386": i386, "cortexm3": CortexM3}
