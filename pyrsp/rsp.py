@@ -198,6 +198,9 @@ class RSP(object):
 
     def __getattr__(self, name):
         if name not in self.__dict__ or not self.__dict__[name]:
+            if name=='regs':
+                self.refresh_regs()
+                return self.__dict__[name]
             if name in self.regs.keys():
                 return self.regs[name]
         if name in self.__dict__.keys():
