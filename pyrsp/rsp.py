@@ -299,9 +299,12 @@ class RSP(object):
             if self.verbose: print 'OK'
 
         if self.verbose: print "continuing"
+        self.exit = False
         sig = self.fetch('c')
         while sig[:3] in ['T05', 'S05']:
             self.handle_br()
+            if self.exit:
+                return
             sig = self.fetch('c')
 
         if sig[0] == 'W': # The process exited, getting values is impossible
@@ -409,7 +412,7 @@ class RSP(object):
             print "continuing and detaching"
         # leave in running state
         self.send('c')
-        sys.exit(0)
+        self.exit = True
 
     def get_src_line(self, addr):
         """ returns the source-code line associated with address addr
