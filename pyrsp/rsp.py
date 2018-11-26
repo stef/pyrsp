@@ -117,6 +117,9 @@ class RSP(object):
         if feats:
             self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
 
+        # By default, use Z/z packets to manipulate breakpoints
+        self.z_breaks = True
+
         # attach
         self.connect()
 
@@ -363,11 +366,18 @@ class RSP(object):
                            'cb': cb,
                            'old': self.br[addr]['old']}
         else:
-            self.br[addr]={'sym': sym,
-                           'cb': cb,
-                           'old': unhex(self.fetch('m%s,2' % addr))}
-        #self.fetch('Z0,%s,2' % addr)
-        tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
+            self.br[addr]= br = {'sym': sym, 'cb': cb}
+            if self.z_breaks:
+                tmp = self.fetch('Z0,%s,2' % addr)
+                if tmp == "":
+                    # Z/z packages are not supported, use code patching
+                    self.z_breaks = False
+                    br['old'] = unhex(self.fetch('m%s,2' % addr))
+                    tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
+            else:
+                br['old'] = unhex(self.fetch('m%s,2' % addr))
+                tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
+
         if self.verbose and not quiet:
             print "set break: @%s (0x%s)" % (sym, addr), tmp
 
@@ -379,7 +389,7 @@ class RSP(object):
             tmp = self.fetch('X%s,2:%s' % (addr, self.br[addr]['old']))
             if self.verbose and not quiet: print "clear breakpoint: @%s (0x%s)" % (sym, addr), tmp
         else:
-            tmp = self.fetch('Z0,%s,2' % addr)
+            tmp = self.fetch('z0,%s,2' % addr)
             if tmp!= 'OK':
                 print "failed to clear break: @%s (0x%s)" % ('FaultHandler', addr), tmp
             elif self.verbose and not quiet:
