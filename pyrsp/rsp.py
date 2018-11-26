@@ -300,14 +300,14 @@ class RSP(object):
 
         if self.verbose: print "continuing"
         sig = self.fetch('c')
-        while sig in ['T05', 'S05']:
+        while sig[:3] in ['T05', 'S05']:
             self.handle_br()
             sig = self.fetch('c')
 
         if sig[0] == 'W': # The process exited, getting values is impossible
             return
 
-        if sig!='T0B': print 'strange signal', sig
+        if sig[:3]!='T0B': print 'strange signal', sig
         if hasattr(self, 'checkfault'):
             self.checkfault()
         else:
@@ -426,7 +426,7 @@ class RSP(object):
         cb  = self.br[self.regs[self.pc_reg]]['cb']
         self.del_br(self.regs[self.pc_reg], quiet=True)
         sig = self.fetch('s')
-        if sig in ['T05', 'T0B']:
+        if sig[:3] in ['T05', 'T0B']:
             self.set_br(sym, cb, quiet=True)
         else:
             print 'strange signal while stepi over br, abort'
