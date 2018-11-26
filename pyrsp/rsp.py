@@ -547,7 +547,7 @@ class CortexM3(RSP):
         while(tmp):
             tmp = self.readpkt(timeout=1)
         # enable extended mode
-        self.fetchOK('!')
+        self.extended = self.fetch('!') == "OK"
 
         # setup registers TODO
         # registers should be parsed from the output of, see target.xml
