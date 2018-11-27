@@ -16,6 +16,8 @@
 
 # (C) 2014 by Stefan Marsiske, <s@ctrlc.hu>
 
+from socket import socket, AF_INET, SOCK_STREAM
+
 def pack(data):
     """ formats data into a RSP packet """
     for a, b in [(x, chr(ord(x) ^ 0x20)) for x in ['}','*','#','$']]:
@@ -54,3 +56,17 @@ def hexdump(data, ptr=0):
                                                    ''.join([c if c.isalnum() else '.' for c in line]))
                                  for i, line in enumerate(split_by_n(data,32))])
 
+def find_free_port(start = 4321):
+    "Search free TCP port for listening."
+
+    for port in range(start, 1 << 16):
+        test_socket = socket(AF_INET, SOCK_STREAM)
+        try:
+            test_socket.bind(("", port))
+        except:
+            pass
+        else:
+            return port
+        finally:
+            test_socket.close()
+    # return None
