@@ -18,6 +18,84 @@
 
 from socket import SO_REUSEADDR, SOL_SOCKET, socket, AF_INET, SOCK_STREAM
 from time import time
+from json import JSONDecoder, JSONEncoder
+
+_json_decoder, _json_encoder = JSONDecoder(), JSONEncoder()
+
+from sys import version_info
+if version_info[0] >= 3:
+    def qmp_encode(_dict):
+        return _json_encoder.encode(_dict).encode("utf-8")
+    def qmp_decode(_bytes):
+        return _json_decoder.raw_decode(_bytes.decode("utf-8"))
+else:
+    qmp_encode = _json_encoder.encode
+    qmp_decode = _json_decoder.raw_decode
+
+class QMP(object):
+    """ QEMU Monitor Protocol client over TCP.
+See: https://wiki.qemu.org/Documentation/QMP
+    """
+
+    def __init__(self, port, host = "localhost"):
+        self._sock = socket(AF_INET, SOCK_STREAM)
+        self._sock.connect((host, port))
+
+        # Wait for QEMU QMP prompt
+        self.qmp_info = qmp_decode(self.next_json_object)[0]
+        # Mandatory request for capabilities
+        self.qmp_caps = self("qmp_capabilities")["return"]
+
+    @property
+    def next_json_object(self):
+        sock = self._sock
+        c = None
+        # wait for beginning of JSON object
+        while c != b'{':
+            c = sock.recv(1)
+        res = c
+        in_str = None
+        escaping = False
+        nesting = 1
+        while nesting > 0:
+            c = sock.recv(1)
+            if in_str is None:
+                if c == b'{':
+                    nesting += 1
+                elif c == b'}':
+                    nesting -= 1
+                elif c == b'"' or c == b"'":
+                    in_str = c
+            else:
+                if escaping:
+                    escaping = False
+                else:
+                    if c == b'\\':
+                        escaping = True
+                    elif c == in_str:
+                        in_str = None
+
+            res += c
+        return res
+
+    def __call__(self, command, _id = None, control = None, args = {}, **kw):
+        request = dict(execute = command)
+        if control is not None:
+            request["control"] = control
+        if _id is not None:
+            request["id"] = _id
+        # Never update `args` with `kw` because this affect other calls!
+        kw.update(args)
+        if kw:
+            request["arguments"] = kw
+
+        self._sock.send(qmp_encode(request) + b"\r\n")
+
+        response = qmp_decode(self.next_json_object)[0]
+
+        if "error" in response:
+            raise RuntimeError("QMP Error: " + str(response))
+        return response
 
 def pack(data):
     """ formats data into a RSP packet """
