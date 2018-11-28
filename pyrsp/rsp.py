@@ -337,11 +337,12 @@ class RSP(object):
                 print "0 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
             else:
                 print self.pc_reg, self.regs[self.pc_reg]
-            src_line = self.get_src_line(int(self.regs['lr'],16) -3)
-            if src_line:
-                print "1 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
-            else:
-                print 'lr', self.regs['lr']
+            if isinstance(self, CortexM3):
+                src_line = self.get_src_line(int(self.regs['lr'],16) -3)
+                if src_line:
+                    print "1 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
+                else:
+                    print 'lr', self.regs['lr']
             self.dump_regs()
 
         res = None
