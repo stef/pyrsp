@@ -255,7 +255,7 @@ class RSP(object):
         """ sets value of register reg to val on device """
         if isinstance(val, str):
             self.regs[reg]=val
-        if isinstance(val, int):
+        if isinstance(val, (int, long)):
             self.regs[reg]=self.reg_fmt % val
         self.fetchOK("G%s" % ''.join([switch_endian(self.regs[r]) for r in self.registers if r in self.regs]))
 
