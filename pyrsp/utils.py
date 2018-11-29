@@ -159,3 +159,33 @@ def wait_for_tcp_port(port, timeout = 5.0):
             test_socket.close()
             return True
     return False
+
+def rsp_decode(data):
+    """ Decodes run-length encoded data.
+        See: https://sourceware.org/gdb/onlinedocs/gdb/Overview.html
+    """
+    return "".join(rsp_decode_parts(data))
+
+def rsp_decode_parts(data):
+    """ An internal variant of run-length decoder.
+        It yields parts of decoded data.
+    """
+    parts = data.split('*')
+    i = iter(parts)
+    prev = next(i)
+    yield prev
+    for cur in i:
+        try:
+            n = ord(cur[0]) - 29
+        except IndexError:
+            # paired stars, one by one
+            yield prev[-1] * 13 # ord("*") - 29
+            try:
+                cur = next(i)
+            except StopIteration:
+                break
+            yield cur
+        else:
+            yield prev[-1] * n
+            yield cur[1:]
+        prev = cur
