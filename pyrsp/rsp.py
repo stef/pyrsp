@@ -22,7 +22,8 @@ if os.path.exists(activate_this):
     execfile(activate_this, dict(__file__=activate_this))
 
 import serial
-from pyrsp.utils import hexdump, pack, unpack, unhex, switch_endian, split_by_n
+from pyrsp.utils import (hexdump, pack, unpack, unhex, switch_endian,
+    split_by_n, rsp_decode)
 from pyrsp.elf import ELF
 from binascii import hexlify
 
@@ -268,10 +269,12 @@ class RSP(object):
     def refresh_regs(self):
         """ loads and caches values of the registers on the device """
         self.send('g')
+        enc_reg_blob = self.readpkt()
+        reg_blob = rsp_decode(enc_reg_blob)
+        raw_regs = split_by_n(reg_blob, self.arch['bitsize']>>2)
         if self.arch['endian']:
-            self.regs=dict(zip(self.registers,(switch_endian(reg) for reg in split_by_n(self.readpkt(),self.arch['bitsize']>>2))))
-        else:
-            self.regs=dict(zip(self.registers,split_by_n(self.readpkt(),self.arch['bitsize']>>2)))
+            raw_regs = iter(switch_endian(reg) for reg in raw_regs)
+        self.regs = dict(zip(self.registers, raw_regs))
 
     def dump_regs(self):
         """ refreshes and dumps registers via stdout """
