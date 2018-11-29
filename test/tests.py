@@ -63,6 +63,19 @@ class TestUserSimple(TestUser):
     def test_simple(self):
         self._target.run(setpc=False)
 
+    def test_br(self):
+        target = self._target
+
+        def br():
+            self._br = True
+            target.step_over_br()
+
+        target.set_br("main", br)
+
+        self._br = False
+        target.run(setpc=False)
+        self.assertTrue(self._br, "breakpoint skipped")
+
 
 class TestARM(TestCase):
 
