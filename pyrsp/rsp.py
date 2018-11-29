@@ -385,7 +385,9 @@ class RSP(object):
         if not addr:
             print "unknown symbol: %s, ignoring request to set br" % sym
             return
-        addr = self.reg_fmt % (addr & ~1)
+        if isinstance(self, CortexM3):
+            addr &= ~1
+        addr = self.reg_fmt % addr
         if addr in self.br:
             print "warn: overwriting breakpoint at %s" % sym
             self.br[addr]={'sym': sym,
