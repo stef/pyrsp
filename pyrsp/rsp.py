@@ -203,7 +203,7 @@ class RSP(object):
         tmp = self.readpkt(timeout=1)
         if tmp and self.verbose: print 'helo', tmp
 
-        self.send('qSupported')
+        self.send('qSupported:swbreak+')
         feats = self.readpkt()
         if feats:
             self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
