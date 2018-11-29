@@ -93,6 +93,7 @@ class RSP(object):
             debugging device specified by port, and initializes itself.
         """
         self.registers = self.arch['regs']
+        self.reg_fmt = "%%0%ux" % (self.arch['bitsize'] >> 2)
         self.__dict__['br'] = {}
         self.__dict__['verbose'] = verbose
         # open serial connection
