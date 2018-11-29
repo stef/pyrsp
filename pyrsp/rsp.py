@@ -120,8 +120,23 @@ class RSP(object):
         # By default, use Z/z packets to manipulate breakpoints
         self.z_breaks = True
 
+        self._thread = None
+
+        # select all threads initially
+        self.thread = "0"
+
         # attach
         self.connect()
+
+    @property
+    def thread(self):
+        return self._thread
+
+    @thread.setter
+    def thread(self, pid_tid):
+        if self._thread != pid_tid:
+            self.fetchOK("Hg" + pid_tid)
+            self._thread = pid_tid
 
     def connect(self):
         pass
