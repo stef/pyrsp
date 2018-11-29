@@ -108,16 +108,8 @@ class RSP(object):
         tmp = self.readpkt(timeout=1)
         if tmp and verbose: print 'helo', tmp
 
-        self.port.write(pack('+'))
-
-        tmp = self.readpkt(timeout=1)
-        if tmp and verbose: print 'helo', tmp
-
-        self.send('qSupported')
         #self.port.write(pack('qSupported:multiprocess+;qRelocInsn+'))
-        feats = self.readpkt()
-        if feats:
-            self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
+        self._get_feats()
 
         # By default, use Z/z packets to manipulate breakpoints
         self.z_breaks = True
