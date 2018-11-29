@@ -382,7 +382,7 @@ class RSP(object):
         if not addr:
             print "unknown symbol: %s, ignoring request to set br" % sym
             return
-        addr = "%08x" % (addr & ~1)
+        addr = self.reg_fmt % (addr & ~1)
         if addr in self.br:
             print "warn: overwriting breakpoint at %s" % sym
             self.br[addr]={'sym': sym,
@@ -592,11 +592,12 @@ class CortexM3(RSP):
         self.port.setup(self)
 
         addr=struct.unpack(">I", self.getreg(4, 0x0800000c))[0] - 1
-        self.br[format(addr, '08x')]={'sym': "FaultHandler",
+        addr = self.reg_fmt % addr
+        self.br[addr]={'sym': "FaultHandler",
                              'cb': self.checkfault}
-        tmp = self.fetch('Z1,%s,2' % format(addr, 'x'))
+        tmp = self.fetch('Z1,%s,2' % addr)
         if tmp== 'OK':
-            if self.verbose: print "set break: @%s (0x%s)" % ('FaultHandler', format(addr, 'x')), tmp
+            if self.verbose: print "set break: @%s (0x%s)" % ('FaultHandler', addr), tmp
             return
 
         # vector_catch enable hard int bus stat chk nocp mm reset
