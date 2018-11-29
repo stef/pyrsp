@@ -60,7 +60,7 @@ class TestUserSimple(TestUser):
     EXE = join(test_dir, "test-simple.exe")
 
     def test_simple(self):
-        self._target.run("main")
+        self._target.run(setpc=False)
 
 
 if __name__ == "__main__":

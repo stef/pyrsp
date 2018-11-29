@@ -282,17 +282,18 @@ class RSP(object):
             tmp = self.fetch('qsThreadInfo')
         return (tid, extra, tids)
 
-    def run(self, start=None):
+    def run(self, start=None, setpc=True):
         """ sets pc to start if given or to entry address from elf header,
             passes control to the device and handles breakpoints
         """
-        if not start:
-            entry = "%08x" % self.elf.entry
-        else:
-            entry = "%08x" % (self.elf.symbols[start] & ~1)
-        if self.verbose: print "set new pc: @test (0x%s)" % entry,
-        self.set_reg('pc', entry)
-        if self.verbose: print 'OK'
+        if setpc:
+            if not start:
+                entry = "%08x" % self.elf.entry
+            else:
+                entry = "%08x" % (self.elf.symbols[start] & ~1)
+            if self.verbose: print "set new pc: @test (0x%s)" % entry,
+            self.set_reg('pc', entry)
+            if self.verbose: print 'OK'
 
         if self.verbose: print "continuing"
         sig = self.fetch('c')
