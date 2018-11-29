@@ -620,7 +620,7 @@ class AMD64(RSP):
                               "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
                               "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
                               "mxcsr",],
-                     'endian': False,
+                     'endian': True,
                      'bitsize': 64}
         self.pc_reg = "rip"
         super(AMD64,self).__init__(*args, **kwargs)
@@ -634,7 +634,7 @@ class i386(RSP):
                              "fctrl", "fstat", "ftag", "fiseg", "fioff", "foseg", "fooff", "fop",
                              "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
                              "mxcsr"],
-                    'endian': False,
+                    'endian': True,
                     'bitsize': 32}
         self.pc_reg = "eip"
         super(i386,self).__init__(*args, **kwargs)
