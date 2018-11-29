@@ -256,7 +256,7 @@ class RSP(object):
         if isinstance(val, str):
             self.regs[reg]=val
         if isinstance(val, int):
-            self.regs[reg]='%x' % val
+            self.regs[reg]=self.reg_fmt % val
         self.fetchOK("G%s" % ''.join([switch_endian(self.regs[r]) for r in self.registers if r in self.regs]))
 
     def refresh_regs(self):
@@ -302,9 +302,10 @@ class RSP(object):
         """
         if setpc:
             if not start:
-                entry = "%08x" % self.elf.entry
+                entry_addr = self.elf.entry
             else:
-                entry = "%08x" % (self.elf.symbols[start] & ~1)
+                entry_addr = self.elf.symbols[start]
+            entry = self.reg_fmt % entry_addr
             if self.verbose: print "set new pc: @test (0x%s)" % entry,
             self.set_reg(self.pc_reg, entry)
             if self.verbose: print 'OK'
