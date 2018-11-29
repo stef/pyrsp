@@ -324,6 +324,8 @@ class RSP(object):
                 entry_addr = self.elf.entry
             else:
                 entry_addr = self.elf.symbols[start]
+            if isinstance(self, CortexM3):
+                entry_addr &= ~1
             entry = self.reg_fmt % entry_addr
             if self.verbose: print "set new pc: @test (0x%s)" % entry,
             self.set_reg(self.pc_reg, entry)
