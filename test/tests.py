@@ -76,6 +76,29 @@ class TestUserSimple(TestUser):
         target.run(setpc=False)
         self.assertTrue(self._br, "breakpoint skipped")
 
+    def test_set_reg_int(self):
+        target = self._target
+
+        # Because target is not started yet, a register cannot be set.
+        # So, do it during a breakpoint.
+        def set_reg():
+            reg_name = target.registers[4] # not a first register
+            cur_val = int(getattr(target, reg_name), 16)
+
+            bits = target.arch['bitsize']
+            shift = bits - 5 # a bit within MSB
+            new_val = (cur_val + (1 << shift) + 1) & ((1 << bits) - 1)
+
+            target.set_reg(reg_name, new_val)
+
+            target.dump_regs()
+            self.assertEqual(int(getattr(target, reg_name), 16), new_val,
+                             "the register was not set")
+            target.step_over_br()
+
+        target.set_br("main", set_reg)
+        target.run(setpc=False)
+
 
 class TestARM(TestCase):
 
@@ -128,6 +151,14 @@ class TestARM(TestCase):
         target.set_br("rsp_finish", target.finish_cb)
         target.set_br("rsp_dump", target.dump_cb)
         target.run()
+
+    def test_set_reg_int(self):
+        target = self._target
+        new_val = (int(target.r1, 16) + (1 << 20) + 1) & ((1 << 32) - 1)
+        target.set_reg("r1", new_val)
+        target.dump_regs()
+        self.assertEqual(int(target.r1, 16), new_val,
+                         "the register was not set")
 
     def tearDown(self):
         self._qemu.terminate()
