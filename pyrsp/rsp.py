@@ -135,20 +135,24 @@ class RSP(object):
     def connect(self):
         pass
 
-    def send(self, data, retries=50):
-        """ sends data via the RSP protocol to the device """
-        self.port.write(pack(data))
+    def read_ack(self, retries=50):
         res = None
         while not res:
             res = self.port.read()
         discards = []
-        while res!='+' and retries>0:
+        while res != '+' and retries > 0:
             discards.append(res)
-            retries-=1
+            retries -= 1
             res = self.port.read()
-        if len(discards)>0 and self.verbose: print 'send discards', discards
-        if retries==0:
+        if len(discards) > 0 and self.verbose:
+            print 'read_ack discards', discards
+        if retries == 0:
             raise ValueError("retry fail")
+
+    def send(self, data, retries=50):
+        """ sends data via the RSP protocol to the device """
+        self.port.write(pack(data))
+        self.read_ack(retries)
         #print 'sent', data
 
     def readpkt(self, timeout=0):
@@ -339,16 +343,7 @@ class RSP(object):
                     print 'lr', self.regs['lr']
             self.dump_regs()
 
-        res = None
-        while not res:
-            res = self.port.read()
-        discards = []
-        retries = 20
-        while res!='+' and retries>0:
-            discards.append(res)
-            retries-=1
-            res = self.port.read()
-        if len(discards)>0 and self.verbose: print 'send discards', discards
+        self.read_ack(20)
 
         self.port.close(self)
         sys.exit(0)
@@ -660,16 +655,7 @@ def main():
             import traceback
             traceback.print_exc()
 
-            res = None
-            while not res:
-                res = rsp.port.read()
-            discards = []
-            retries = 20
-            while res!='+' and retries>0:
-                discards.append(res)
-                retries-=1
-                res = rsp.port.read()
-            if len(discards)>0 and rsp.verbose: print 'send discards', discards
+            rsp.read_ack(20)
 
             rsp.port.close(rsp)
             sys.exit(1)
