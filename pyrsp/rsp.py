@@ -88,10 +88,13 @@ class STlink2(object):
         self.port.close()
 
 class RSP(object):
-    def __init__(self, port, elffile=None, verbose=False):
+    def __init__(self, port, elffile=None, verbose=False, noack=False):
         """ read the elf file if given by elffile, connects to the
             debugging device specified by port, and initializes itself.
         """
+        # Initially packet acknowledgment is enabled.
+        # https://sourceware.org/gdb/onlinedocs/gdb/Packet-Acknowledgment.html
+        self.ack = True
         self.registers = self.arch['regs']
         self.reg_fmt = "%%0%ux" % (self.arch['bitsize'] >> 2)
         self.__dict__['br'] = {}
@@ -118,6 +121,11 @@ class RSP(object):
 
         # select all threads initially
         self.thread = "0"
+
+        if noack and "QStartNoAckMode+" in self.feats:
+            self.fetchOK("QStartNoAckMode")
+            self.ack = False
+            self.read_ack = lambda *_, **__ : None
 
         # attach
         self.connect()
@@ -175,13 +183,19 @@ class RSP(object):
             if res[-1]=='#' and res[-2]!="'":
                 res.append(self.port.read())
                 res.append(self.port.read())
-                try:
-                    res=unpack(''.join(res))
-                except:
-                    self.port.write('-')
-                    res=[]
-                    continue
-                self.port.write('+')
+                if self.ack:
+                    try:
+                        res = unpack(''.join(res))
+                    except:
+                        self.port.write('-')
+                        res = []
+                        continue
+                    self.port.write('+')
+                else:
+                    # Do not even check packages in NoAck mode.
+                    # If a user relies on the connection robustness then we
+                    # should provide as fast operation as we can.
+                    res = ''.join(res[1:-3])
                 #print "read", res
                 return res
 
@@ -202,7 +216,8 @@ class RSP(object):
         self.store(val,i)
 
     def _get_feats(self):
-        self.port.write(pack('+'))
+        if self.ack:
+            self.port.write(pack('+'))
 
         tmp = self.readpkt(timeout=1)
         if tmp and self.verbose: print 'helo', tmp
