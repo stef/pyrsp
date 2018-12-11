@@ -23,7 +23,7 @@ if os.path.exists(activate_this):
 
 import serial
 from pyrsp.utils import (hexdump, pack, unpack, unhex, switch_endian,
-    split_by_n, rsp_decode)
+    split_by_n, rsp_decode, stop_reply)
 from pyrsp.elf import ELF
 from binascii import hexlify
 
@@ -318,17 +318,17 @@ class RSP(object):
 
         if self.verbose: print "continuing"
         self.exit = False
-        sig = self.fetch('c')
-        while sig[:3] in ['T05', 'S05']:
+        kind, sig, _ = stop_reply(self.fetch('c'))
+        while kind in ('T', 'S') and sig == 05:
             self.handle_br()
             if self.exit:
                 return
-            sig = self.fetch('c')
+            kind, sig, _ = stop_reply(self.fetch('c'))
 
-        if sig[0] == 'W': # The process exited, getting values is impossible
+        if kind == 'W': # The process exited, getting values is impossible
             return
 
-        if sig[:3]!='T0B': print 'strange signal', sig
+        if (kind, sig) != ('T', 0x0b): print 'strange signal', sig
         if hasattr(self, 'checkfault'):
             self.checkfault()
         else:
@@ -447,8 +447,8 @@ class RSP(object):
         sym = self.br[self.regs[self.pc_reg]]['sym']
         cb  = self.br[self.regs[self.pc_reg]]['cb']
         self.del_br(self.regs[self.pc_reg], quiet=True)
-        sig = self.fetch('s')
-        if sig[:3] in ['T05', 'T0B']:
+        kind, sig, _ = stop_reply(self.fetch('s'))
+        if kind == 'T' and sig in (05, 0x0b):
             self.set_br(sym, cb, quiet=True)
         else:
             print 'strange signal while stepi over br, abort'
@@ -553,7 +553,7 @@ class CortexM3(RSP):
 
     def checkfault(self):
         # impl check, only dumps now.
-        #sig = self.fetch('s')
+        #kind, sig, data = stop_reply(self.fetch('s'))
         #print 'sig', sig
         self.dump_mpu()
         print 'hfsr=', self.printreg(scb_hfsr.parse(self.getreg(4, SCB_HFSR)))
