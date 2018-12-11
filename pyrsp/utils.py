@@ -189,3 +189,28 @@ def rsp_decode_parts(data):
             yield prev[-1] * n
             yield cur[1:]
         prev = cur
+
+def stop_reply(packet):
+    """ Parses Stop Reply Packet
+        See: https://sourceware.org/gdb/onlinedocs/gdb/Stop-Reply-Packets.html
+
+        :returns: tuple (kind, signal, data), signal and data can be None
+    """
+    kind = packet[0]
+    if kind == 'T':
+        signal, data = int(packet[1:3], 16), packet[3:]
+    elif kind == 'S':
+        signal, data = int(packet[1:3], 16), None
+    elif kind == 'N':
+        signal, data = None, None
+    elif kind in ('O', 'F'):
+        signal, data = None, packet[1:]
+    elif kind in ('W', 'X', 'w'):
+        if len(packet) > 3:
+            # multiprocess
+            kind_signal, data = packet.split(";", 1)
+            signal = int(kind_signal[1:], 16)
+        else:
+            signal, data = int(packet[1:3], 16), None
+
+    return kind, signal, data
