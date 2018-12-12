@@ -214,3 +214,17 @@ def stop_reply(packet):
             signal, data = int(packet[1:3], 16), None
 
     return kind, signal, data
+
+def stop_event(data):
+    """ Parses data of 'T' Stop Reply Packet
+
+        :returns: dict
+    """
+    event = {}
+
+    while data:
+        pair, data = data.split(';', 1)
+        n, r = pair.split(':', 1)
+        event[n] = r
+
+    return event
