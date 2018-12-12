@@ -23,7 +23,7 @@ if os.path.exists(activate_this):
 
 import serial
 from pyrsp.utils import (hexdump, pack, unpack, unhex, switch_endian,
-    split_by_n, rsp_decode, stop_reply)
+    split_by_n, rsp_decode, stop_reply, stop_event)
 from pyrsp.elf import ELF
 from binascii import hexlify
 
@@ -133,6 +133,7 @@ class RSP(object):
             actions = self.fetch("vCont?").split(';') # vCont[;action...]
             if "c" in actions:
                 self.cont = self.vContc
+                self.cont_all = self.vContc_all
             if "s" in actions:
                 self.step = self.vConts
 
@@ -279,11 +280,17 @@ class RSP(object):
         res = self.fetch(data)
         if res!=ok: raise ValueError(res)
 
-    def vContc(self):
+    def vContc_all(self):
         return self.fetch("vCont;c")
 
-    def vConts(self):
+    def vConts_all(self):
         return self.fetch("vCont;s")
+
+    def vContc(self):
+        return self.fetch("vCont;c:" + self._thread)
+
+    def vConts(self):
+        return self.fetch("vCont;s:" + self._thread)
 
     def c(self):
         return self.fetch("c")
@@ -294,6 +301,9 @@ class RSP(object):
     # They will be replaced with vCont variants if supported by the stub.
     step = s
     cont = c
+    # 'c' packet is deprecated for multi-threading support.
+    # But cont_all is same as cont for a single-threaded process.
+    cont_all = c
 
     def set_reg(self, reg, val):
         """ sets value of register reg to val on device """
@@ -358,12 +368,17 @@ class RSP(object):
 
         if self.verbose: print "continuing"
         self.exit = False
-        kind, sig, _ = stop_reply(self.cont())
+        kind, sig, data = stop_reply(self.cont_all())
         while kind in ('T', 'S') and sig == 05:
+            # Update current thread for a breakpoint handler.
+            event = stop_event(data)
+            self.thread = event["thread"]
             self.handle_br()
             if self.exit:
                 return
-            kind, sig, _ = stop_reply(self.cont())
+            # Some threads can be created during the breakpoint handling.
+            # `cont_all` resumes them..
+            kind, sig, data = stop_reply(self.cont_all())
 
         if kind == 'W': # The process exited, getting values is impossible
             return
