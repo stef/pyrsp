@@ -595,7 +595,7 @@ class i386(RSP):
                     'bitsize': 32}
         super(i386,self).__init__(*args, **kwargs)
 
-archmap={'amd64': AMD64, "i386": i386, "cortexm3": CortexM3}
+archmap={'amd64': AMD64, "x86_64": AMD64, "i386": i386, "cortexm3": CortexM3}
 
 def main():
     # parse arch from cmdline
