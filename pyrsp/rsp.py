@@ -127,6 +127,15 @@ class RSP(object):
             self.ack = False
             self.read_ack = lambda *_, **__ : None
 
+        # replace deprecated resumption commands with new vCont analogues
+        # https://sourceware.org/gdb/onlinedocs/gdb/Packets.html#vCont-packet
+        if "vContSupported+" in self.feats:
+            actions = self.fetch("vCont?").split(';') # vCont[;action...]
+            if "c" in actions:
+                self.cont = self.vContc
+            if "s" in actions:
+                self.step = self.vConts
+
         # attach
         self.connect()
 
@@ -222,7 +231,7 @@ class RSP(object):
         tmp = self.readpkt(timeout=1)
         if tmp and self.verbose: print 'helo', tmp
 
-        self.send('qSupported:swbreak+')
+        self.send('qSupported:swbreak+;vContSupported+')
         feats = self.readpkt()
         if feats:
             self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
@@ -269,6 +278,22 @@ class RSP(object):
         """ sends data and expects success """
         res = self.fetch(data)
         if res!=ok: raise ValueError(res)
+
+    def vContc(self):
+        return self.fetch("vCont;c")
+
+    def vConts(self):
+        return self.fetch("vCont;s")
+
+    def c(self):
+        return self.fetch("c")
+
+    def s(self):
+        return self.fetch("s")
+
+    # They will be replaced with vCont variants if supported by the stub.
+    step = s
+    cont = c
 
     def set_reg(self, reg, val):
         """ sets value of register reg to val on device """
@@ -333,12 +358,12 @@ class RSP(object):
 
         if self.verbose: print "continuing"
         self.exit = False
-        kind, sig, _ = stop_reply(self.fetch('c'))
+        kind, sig, _ = stop_reply(self.cont())
         while kind in ('T', 'S') and sig == 05:
             self.handle_br()
             if self.exit:
                 return
-            kind, sig, _ = stop_reply(self.fetch('c'))
+            kind, sig, _ = stop_reply(self.cont())
 
         if kind == 'W': # The process exited, getting values is impossible
             return
@@ -455,7 +480,7 @@ class RSP(object):
         sym = self.br[self.regs[self.pc_reg]]['sym']
         cb  = self.br[self.regs[self.pc_reg]]['cb']
         self.del_br(self.regs[self.pc_reg], quiet=True)
-        kind, sig, _ = stop_reply(self.fetch('s'))
+        kind, sig, _ = stop_reply(self.step())
         if kind == 'T' and sig in (05, 0x0b):
             self.set_br(sym, cb, quiet=True)
         else:
@@ -561,7 +586,7 @@ class CortexM3(RSP):
 
     def checkfault(self):
         # impl check, only dumps now.
-        #kind, sig, data = stop_reply(self.fetch('s'))
+        #kind, sig, data = stop_reply(self.step())
         #print 'sig', sig
         self.dump_mpu()
         print 'hfsr=', self.printreg(scb_hfsr.parse(self.getreg(4, SCB_HFSR)))
