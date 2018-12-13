@@ -416,7 +416,8 @@ class RSP(object):
             self.dump_regs()
             return
         if self.verbose:
-            print 'breakpoint hit:', self.br[self.regs[self.pc_reg]]['sym']
+            br = self.br[self.regs[self.pc_reg]]
+            print 'breakpoint hit:', (br['sym'] or "0x" + br['addr'])
         self.br[self.regs[self.pc_reg]]['cb']()
 
     def set_br(self, sym, cb, quiet=False):
@@ -430,13 +431,28 @@ class RSP(object):
         if isinstance(self, CortexM3):
             addr &= ~1
         addr = self.reg_fmt % addr
+        self.set_br_a(addr, cb, quiet=quiet, sym=sym)
+
+    def set_br_a(self, addr, cb, quiet=False, sym=None):
+        """ Sets a breakpoint at address, and install callback cb for it.
+
+            `addr` is a hexadecimal string as defined by RSP protocol.
+            Also, because of this RSP implementation `addr` format should be
+            the same as defined by `reg_fmt`.
+
+            Tips:
+            - Use `reg_fmt` attribute to get `addr` string from an integer.
+            - Normally, an unparsed register value has the same format and can
+              be used as is.
+        """
         if addr in self.br:
-            print "warn: overwriting breakpoint at %s" % sym
+            print "warn: overwriting breakpoint at %s" % (sym or "0x" + addr)
             self.br[addr]={'sym': sym,
+                           'addr': addr,
                            'cb': cb,
                            'old': self.br[addr]['old']}
         else:
-            self.br[addr]= br = {'sym': sym, 'cb': cb}
+            self.br[addr]= br = {'sym': sym, 'addr': addr, 'cb': cb}
             if self.z_breaks:
                 tmp = self.fetch('Z0,%s,2' % addr)
                 if tmp == "":
@@ -449,15 +465,16 @@ class RSP(object):
                 tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
 
         if self.verbose and not quiet:
-            print "set break: @%s (0x%s)" % (sym, addr), tmp
+            print "set break: @%s (0x%s)" % (sym or "[unknown]", addr), tmp
 
     def del_br(self, addr, quiet=False):
         """ deletes breakpoint at address addr """
-        sym = self.br[addr]['sym']
         #self.fetch('z0,%s,2' % addr)
         if 'old' in self.br[addr]:
             tmp = self.fetch('X%s,2:%s' % (addr, self.br[addr]['old']))
-            if self.verbose and not quiet: print "clear breakpoint: @%s (0x%s)" % (sym, addr), tmp
+            if self.verbose and not quiet:
+                sym = self.br[addr]['sym'] or "[unknown]"
+                print "clear breakpoint: @%s (0x%s)" % (sym, addr), tmp
         else:
             tmp = self.fetch('z0,%s,2' % addr)
             if tmp!= 'OK':
@@ -492,12 +509,12 @@ class RSP(object):
         return src_line
 
     def step_over_br(self):
-        sym = self.br[self.regs[self.pc_reg]]['sym']
-        cb  = self.br[self.regs[self.pc_reg]]['cb']
-        self.del_br(self.regs[self.pc_reg], quiet=True)
+        back = self.br[self.regs[self.pc_reg]]
+        addr = self.regs[self.pc_reg]
+        self.del_br(addr, quiet=True)
         kind, sig, _ = stop_reply(self.step())
         if kind == 'T' and sig in (05, 0x0b):
-            self.set_br(sym, cb, quiet=True)
+            self.set_br_a(addr, back["cb"], quiet=True, sym=back["sym"])
         else:
             print 'strange signal while stepi over br, abort'
             sys.exit(1)
@@ -640,7 +657,7 @@ class CortexM3(RSP):
 
         addr=struct.unpack(">I", self.getreg(4, 0x0800000c))[0] - 1
         addr = self.reg_fmt % addr
-        self.br[addr]={'sym': "FaultHandler",
+        self.br[addr]={'sym': "FaultHandler", 'addr': addr,
                              'cb': self.checkfault}
         tmp = self.fetch('Z1,%s,2' % addr)
         if tmp== 'OK':
