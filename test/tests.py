@@ -114,6 +114,24 @@ class TestUserSimple(TestUser):
         target.set_br("main", set_reg)
         target.run(setpc=False)
 
+    def test_read_0(self):
+        "Test `dump` behavior on inaccessible target memory."
+        target = self._target
+
+
+        def br():
+            # memory at 0 must not be readable for a user process
+            with self.assertRaises(RuntimeError) as ctx:
+                print("bytes at 0: %r" % target.dump(4, 0))
+
+            print(ctx.exception)
+
+            target.step_over_br()
+
+        target.set_br("main", br)
+
+        target.run(setpc=False)
+
 
 class TestUserCalls(TestUser):
     DEFS = dict(NUM_CALLS = 10)
