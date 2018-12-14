@@ -265,6 +265,15 @@ class RSP(object):
             #print 'm%x,%x' % (addr+i, bsize)
             self.send('m%x,%x' % (addr+i, bsize))
             pkt=self.readpkt()
+            if len(pkt) & 1 and pkt[0] == 'E':
+                # There is an assumption that stub only uses 'e' for data
+                # hexadecimal representation and 'E' is only used for errors.
+                # However, no confirmation has been found in the protocol
+                # definition. But, according to the protocol error message
+                # data length is always odd (i.e. Exx).
+                raise RuntimeError("Reading %u bytes at 0x%x failed: %s " % (
+                    size, addr, pkt
+                ))
             rd.append(unhex(rsp_decode(pkt)))
             i+=bsize
             #print i, size, 'pkt', pkt
