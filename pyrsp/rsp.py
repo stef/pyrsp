@@ -265,7 +265,7 @@ class RSP(object):
             #print 'm%x,%x' % (addr+i, bsize)
             self.send('m%x,%x' % (addr+i, bsize))
             pkt=self.readpkt()
-            rd.append(unhex(pkt))
+            rd.append(unhex(rsp_decode(pkt)))
             i+=bsize
             #print i, size, 'pkt', pkt
         return ''.join(rd)
