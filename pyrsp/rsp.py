@@ -263,8 +263,7 @@ class RSP(object):
         while(i<size):
             bsize = bsize if i+bsize<size else size - i
             #print 'm%x,%x' % (addr+i, bsize)
-            self.send('m%x,%x' % (addr+i, bsize))
-            pkt=self.readpkt()
+            pkt = self.fetch('m%x,%x' % (addr+i, bsize))
             if len(pkt) & 1 and pkt[0] == 'E':
                 # There is an assumption that stub only uses 'e' for data
                 # hexadecimal representation and 'E' is only used for errors.
