@@ -258,12 +258,12 @@ class RSP(object):
         if addr==None:
             addr=self.elf.workarea
         rd = []
-        i=0
+        end = addr + size
         bsize = int(self.feats['PacketSize'], 16) / 2
-        while(i<size):
-            bsize = bsize if i+bsize<size else size - i
-            #print 'm%x,%x' % (addr+i, bsize)
-            pkt = self.fetch('m%x,%x' % (addr+i, bsize))
+        while addr < end:
+            bsize = bsize if addr + bsize < end else end - addr
+            #print 'm%x,%x' % (addr, bsize)
+            pkt = self.fetch('m%x,%x' % (addr, bsize))
             if len(pkt) & 1 and pkt[0] == 'E':
                 # There is an assumption that stub only uses 'e' for data
                 # hexadecimal representation and 'E' is only used for errors.
@@ -271,11 +271,11 @@ class RSP(object):
                 # definition. But, according to the protocol error message
                 # data length is always odd (i.e. Exx).
                 raise RuntimeError("Reading %u bytes at 0x%x failed: %s " % (
-                    size, addr, pkt
+                    bsize, addr, pkt
                 ))
             rd.append(unhex(rsp_decode(pkt)))
-            i+=bsize
-            #print i, size, 'pkt', pkt
+            addr += bsize
+            #print addr, bsize, 'pkt', pkt
         return ''.join(rd)
 
     def fetch(self,data):
