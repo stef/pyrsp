@@ -417,8 +417,11 @@ class RSP(object):
         """ dumps register on breakpoint/signal, continues if unknown,
             otherwise it calls the appropriate callback.
         """
-        print
-        self.dump_regs()
+        if self.verbose:
+            print
+            self.dump_regs()
+        else:
+            self.refresh_regs()
         if not self.regs[self.pc_reg] in self.br:
             print "unknown break point passed"
             self.dump_regs()
