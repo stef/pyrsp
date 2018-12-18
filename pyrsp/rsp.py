@@ -473,8 +473,8 @@ class RSP(object):
                 br['old'] = unhex(self.fetch('m%s,2' % addr))
                 tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
 
-        if self.verbose and not quiet:
-            print "set break: @%s (0x%s)" % (sym or "[unknown]", addr), tmp
+            if self.verbose and not quiet:
+                print "set break: @%s (0x%s)" % (sym or "[unknown]", addr), tmp
 
     def del_br(self, addr, quiet=False):
         """ deletes breakpoint at address addr """
