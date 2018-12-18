@@ -458,10 +458,8 @@ class RSP(object):
         """
         if addr in self.br:
             print "warn: overwriting breakpoint at %s" % (sym or "0x" + addr)
-            self.br[addr]={'sym': sym,
-                           'addr': addr,
-                           'cb': cb,
-                           'old': self.br[addr]['old']}
+            br = self.br[addr]
+            br.update(sym = sym, cb = cb)
         else:
             self.br[addr]= br = {'sym': sym, 'addr': addr, 'cb': cb}
             if self.z_breaks:
