@@ -197,6 +197,27 @@ class TestUserMemory(TestUser):
 
         target.run(setpc = False)
 
+    def test_vfffff(self):
+        target = self._target
+
+        # In hexadecimal "vfffff" is 766666666666 ('7' + '6' * 11).
+        # In run-length encoded packet it is $76*'#xx where xx is place of
+        # checksum. "'" is before "#" because ord("'") - 29 == 10.
+        # That means "repeat previous character 10 times yet".
+        # I.e. '6' + '6' * 10, see run-length encoding of GDB RSP for details.
+        expected = "vfffff"
+
+        def br():
+            ptr = int(target.regs[self._arg2reg[0]], 16)
+            target[ptr] = expected
+            data = target[ptr:ptr + len(expected)]
+            self.assertEqual(data, expected, "incorrect data")
+            target.step_over_br()
+
+        target.set_br("rsp_dump", br)
+
+        target.run(setpc = False)
+
 
 class TestUserCallback(TestUser):
     SRC = join(test_dir, "test-callback.c")
