@@ -190,7 +190,7 @@ class RSP(object):
 
         while True:
             res.append(self.port.read())
-            if res[-1]=='#' and res[-2]!="'":
+            if res[-1]=='#':
                 res.append(self.port.read())
                 res.append(self.port.read())
                 if self.ack:
