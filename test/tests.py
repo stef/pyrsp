@@ -91,6 +91,12 @@ class TestUserSimple(TestUser):
         target.run(setpc=False)
         self.assertTrue(self._br, "breakpoint skipped")
 
+    def test_overwrite_br(self):
+        target = self._target
+        target.set_br("main", None)
+        # a `KeyError` expected there in buggy version
+        target.set_br("main", None)
+
     def test_set_reg_int(self):
         target = self._target
 
