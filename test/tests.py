@@ -19,7 +19,11 @@ def run(*args, **kw):
     return Popen([a for a in args if a], **kw).wait()
 
 
-class TestUser(TestCase):
+class TestRSP(TestCase):
+    noack = False
+
+
+class TestUser(TestRSP):
     "Test for userspace program debugging."
 
     DEFS = {}
@@ -49,7 +53,11 @@ class TestUser(TestCase):
         if not wait_for_tcp_port(rsp_port) or gdb.returncode is not None:
             raise RuntimeError("gdbserver malfunction")
 
-        self._target = rsp(self._port, elffile = self.EXE, verbose = True)
+        self._target = rsp(self._port,
+            elffile = self.EXE,
+            verbose = True,
+            noack = self.noack
+        )
 
     def tearDown(self):
         self._gdb.terminate()
@@ -100,7 +108,7 @@ class TestUserSimple(TestUser):
         target.run(setpc=False)
 
 
-class TestARM(TestCase):
+class TestARM(TestRSP):
 
     def setUp(self):
         self.example_dir = join(parent_dir, "example")
@@ -136,7 +144,8 @@ class TestARM(TestCase):
 
         self._target = CortexM3(self._port,
             elffile = self.elf_path,
-            verbose = True
+            verbose = True,
+            noack = self.noack
         )
 
 
@@ -162,6 +171,32 @@ class TestARM(TestCase):
 
     def tearDown(self):
         self._qemu.terminate()
+
+
+class TestUserSimpleNoAck(TestUserSimple):
+    noack = True
+
+    def setUp(self):
+        super(TestUserSimpleNoAck, self).setUp()
+        if self._target.ack:
+            self.tearDown()
+            self.skipTest(
+                "Used version of gdbserver does not support NoAck mode."
+                " The mode has not been tested."
+            )
+
+
+class TestARMNoAck(TestARM):
+    noack = True
+
+    def setUp(self):
+        super(TestARMNoAck, self).setUp()
+        if self._target.ack:
+            self.tearDown()
+            self.skipTest("Used version of QEMU does not support NoAck mode."
+                " The mode has not been tested."
+            )
+
 
 if __name__ == "__main__":
     main()
