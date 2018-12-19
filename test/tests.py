@@ -157,6 +157,29 @@ class TestUserThreads(TestUser):
                          "incorrect breakpoint stops count")
 
 
+class TestUserMemory(TestUser):
+    DEFS = dict(NUB_KIBS = 10)
+    SRC = join(test_dir, "test-memory.c")
+    EXE = join(test_dir, "test-memory.exe")
+
+
+    def test_dump(self):
+        target = self._target
+
+        expected = 'f' * (self.DEFS["NUB_KIBS"] << 10)
+
+        def br():
+            ptr = int(target.regs[self._arg2reg[0]], 16)
+            size = int(target.regs[self._arg2reg[1]], 16)
+            data = target[ptr:ptr + size]
+            self.assertEqual(data, expected, "incorrect data")
+            target.step_over_br()
+
+        target.set_br("rsp_dump", br)
+
+        target.run(setpc = False)
+
+
 class TestUserCallback(TestUser):
     SRC = join(test_dir, "test-callback.c")
     EXE = join(test_dir, "test-callback.exe")
@@ -264,7 +287,13 @@ See: https://stackoverflow.com/questions/3431676/creating-functions-in-a-loop
 
     return dict(setUp = setUp, noack = True)
 
-for test in (TestUserSimple, TestUserCalls, TestUserThreads, TestUserCallback):
+for test in (
+    TestUserSimple,
+    TestUserCalls,
+    TestUserThreads,
+    TestUserCallback,
+    TestUserMemory
+):
     NoAck = test.__name__ + "NoAck"
     globals()[NoAck] = type(NoAck, (test,), makeNoAckAttrs(test))
 

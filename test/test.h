@@ -7,4 +7,7 @@
 #define ARG_ON_REG
 #endif
 
+#define KiB(n) ((n) << 10)
+#define ASIZE(a) (sizeof(a) / sizeof((a)[0]))
+
 #endif // __TEST_H
