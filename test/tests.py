@@ -128,6 +128,28 @@ class TestUserCalls(TestUser):
                          "incorrect breakpoint stops count")
 
 
+class TestUserThreads(TestUser):
+    DEFS = dict(NUM_THREADS = 20)
+    SRC = join(test_dir, "test-threads.c")
+    EXE = join(test_dir, "test-threads.exe")
+    LIBS = ["pthread"]
+
+
+    def test_br_trace(self):
+        target = self._target
+
+        def br():
+            self._traces += 1
+            target.step_over_br()
+
+        target.set_br("trace", br)
+
+        self._traces = 0
+        target.run(setpc = False)
+        self.assertEqual(self._traces, self.DEFS["NUM_THREADS"],
+                         "incorrect breakpoint stops count")
+
+
 class TestARM(TestRSP):
 
     def setUp(self):
@@ -210,7 +232,7 @@ See: https://stackoverflow.com/questions/3431676/creating-functions-in-a-loop
 
     return dict(setUp = setUp, noack = True)
 
-for test in (TestUserSimple, TestUserCalls):
+for test in (TestUserSimple, TestUserCalls, TestUserThreads):
     NoAck = test.__name__ + "NoAck"
     globals()[NoAck] = type(NoAck, (test,), makeNoAckAttrs(test))
 
