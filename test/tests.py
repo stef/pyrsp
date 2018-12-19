@@ -37,6 +37,13 @@ class TestUser(TestRSP):
             self.skipTest("No RSP target for " + machine())
             return
 
+        # Passing function arguments through registers
+        self._arg2reg = {
+            "i386" : ("ecx", "edx") # fastcall calling convention is assumed
+          , "x86_64" : ("rdi", "rsi")
+          , "arm" : ("r0", "r1")
+        }.get(machine(), None)
+
         LDFLAGS = " ".join(("-l" + l) for l in self.LIBS)
         CFLAGS = " ".join("-D%s=%s" % (D, V) for D, V in self.DEFS.items())
         self.assertEqual(
@@ -150,6 +157,31 @@ class TestUserThreads(TestUser):
                          "incorrect breakpoint stops count")
 
 
+class TestUserCallback(TestUser):
+    SRC = join(test_dir, "test-callback.c")
+    EXE = join(test_dir, "test-callback.exe")
+
+    def test_br_at_addr(self):
+        target = self._target
+
+        def br_callback():
+            self._br = True
+            target.step_over_br()
+
+        def br_caller():
+            # get the callback address and set a breakpoint on it
+            cb_addr_str = target.regs[self._arg2reg[0]]
+            target.set_br_a(cb_addr_str, br_callback)
+            target.step_over_br()
+
+        # assume that we known caller address only
+        target.set_br("caller", br_caller)
+
+        self._br = False
+        target.run(setpc = False)
+        self.assertTrue(self._br, "breakpoint skipped")
+
+
 class TestARM(TestRSP):
 
     def setUp(self):
@@ -232,7 +264,7 @@ See: https://stackoverflow.com/questions/3431676/creating-functions-in-a-loop
 
     return dict(setUp = setUp, noack = True)
 
-for test in (TestUserSimple, TestUserCalls, TestUserThreads):
+for test in (TestUserSimple, TestUserCalls, TestUserThreads, TestUserCallback):
     NoAck = test.__name__ + "NoAck"
     globals()[NoAck] = type(NoAck, (test,), makeNoAckAttrs(test))
 

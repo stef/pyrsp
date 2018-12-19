@@ -1,3 +1,4 @@
 test-simple.exe
 test-calls.exe
 test-threads.exe
+test-callback.exe
