@@ -108,6 +108,26 @@ class TestUserSimple(TestUser):
         target.run(setpc=False)
 
 
+class TestUserCalls(TestUser):
+    DEFS = dict(NUM_CALLS = 10)
+    SRC = join(test_dir, "test-calls.c")
+    EXE = join(test_dir, "test-calls.exe")
+
+    def test_br_trace(self):
+        target = self._target
+
+        def br():
+            self._traces += 1
+            target.step_over_br()
+
+        target.set_br("trace", br)
+
+        self._traces = 0
+        target.run(setpc = False)
+        self.assertEqual(self._traces, self.DEFS["NUM_CALLS"],
+                         "incorrect breakpoint stops count")
+
+
 class TestARM(TestRSP):
 
     def setUp(self):
@@ -172,12 +192,15 @@ class TestARM(TestRSP):
     def tearDown(self):
         self._qemu.terminate()
 
+# Generate NoAck Variants of tests
 
-class TestUserSimpleNoAck(TestUserSimple):
-    noack = True
+def makeNoAckAttrs(base):
+    """ Use a function factory to avoid the late binding problem.
+See: https://stackoverflow.com/questions/3431676/creating-functions-in-a-loop
+    """
 
     def setUp(self):
-        super(TestUserSimpleNoAck, self).setUp()
+        base.setUp(self)
         if self._target.ack:
             self.tearDown()
             self.skipTest(
@@ -185,6 +208,13 @@ class TestUserSimpleNoAck(TestUserSimple):
                 " The mode has not been tested."
             )
 
+    return dict(setUp = setUp, noack = True)
+
+for test in (TestUserSimple, TestUserCalls):
+    NoAck = test.__name__ + "NoAck"
+    globals()[NoAck] = type(NoAck, (test,), makeNoAckAttrs(test))
+
+del test # else, this variable will be a yet another test
 
 class TestARMNoAck(TestARM):
     noack = True
