@@ -47,7 +47,7 @@ class TestUser(TestRSP):
         LDFLAGS = " ".join(("-l" + l) for l in self.LIBS)
         CFLAGS = " ".join("-D%s=%s" % (D, V) for D, V in self.DEFS.items())
         self.assertEqual(
-            run("gcc", "-o", self.EXE, "-g", "-O0", CFLAGS, self.SRC, LDFLAGS),
+            run("gcc", "-no-pie", "-o", self.EXE, "-g", "-O0", CFLAGS, self.SRC, LDFLAGS),
             0
         )
         rsp_port = find_free_port()
