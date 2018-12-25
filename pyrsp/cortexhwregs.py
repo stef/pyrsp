@@ -1,77 +1,78 @@
 #!/usr/bin/env python
 
-from construct import BitStruct, BitField, Padding, Enum, Flag
+from construct import BitStruct, BitsInteger, Padding, Enum, Flag
 
 SCB_ICSR = 0xe000ed04
-scb_icsr = BitStruct("scb_icsr",
-                     Flag('NMIPENDSET'),
+scb_icsr = BitStruct(
+                     "NMIPENDSET" / Flag,
                      Padding(2),
-                     Flag('PENDSVSET'),
-                     Flag('PENDSVCLR'),
-                     Flag('PENDSTSET'),
-                     Flag('PENDSTCLR'),
+                     "PENDSVSET" / Flag,
+                     "PENDSVCLR" / Flag,
+                     "PENDSTSET" / Flag,
+                     "PENDSTCLR" / Flag,
                      Padding(1),
-                     Flag('DEBUG'),
-                     Flag('ISRPENDING'),
-                     BitField('VECTPENDING', 10),
-                     Flag('RETOBASE'),
+                     "DEBUG" / Flag,
+                     "ISRPENDING" / Flag,
+                     "VECTPENDING" / BitsInteger(10),
+                     "RETOBASE" / Flag,
                      Padding(2),
-                     BitField('VECTACTIVE', 9),
+                     "VECTACTIVE" / BitsInteger(9)
                      )
 
 SCB_SHCSR = 0xe000ed24
-scb_shcsr = BitStruct("scb_shcsr",
+scb_shcsr = BitStruct(
                      Padding(13),
-                      Flag('USGFAULTENA'),
-                      Flag('BUSFAULTENA'),
-                      Flag('MEMFAULTENA'),
-                      Flag('SVCALLPENDED'),
-                      Flag('BUSFAULTPENDED'),
-                      Flag('MEMFAULTPENDED'),
-                      Flag('USGFAULTPENDED'),
-                      Flag('SYSTICKACT'),
-                      Flag('PENDSVACT'),
+                      "USGFAULTENA" / Flag,
+                      "BUSFAULTENA" / Flag,
+                      "MEMFAULTENA" / Flag,
+                      "SVCALLPENDED"/ Flag,
+                      "BUSFAULTPENDED" / Flag,
+                      "MEMFAULTPENDED" / Flag,
+                      "USGFAULTPENDED" / Flag,
+                      "SYSTICKACT" / Flag,
+                      "PENDSVACT" / Flag,
                       Padding(1),
-                      Flag('MONITORACT'),
-                      Flag('SVCALLACT'),
+                      "MONITORACT" / Flag,
+                      "SVCALLACT" / Flag,
                       Padding(3),
-                      Flag('USGFAULTACT'),
+                      "USGFAULTACT" / Flag,
                       Padding(1),
-                      Flag('BUSFAULTACT'),
-                      Flag('MEMFAULTACT'))
+                      "BUSFAULTACT" / Flag,
+                      "MEMFAULTACT" / Flag,
+                      )
 
 SCB_CFSR = 0xe000ed28
-scb_cfsr = BitStruct("scb_cfsr",
+scb_cfsr = BitStruct(
                      Padding(6),
-                     Flag("DIVBYZERO"),
-                     Flag("UNALIGNED"),
+                     "DIVBYZERO" / Flag,
+                     "UNALIGNED" / Flag,
                      Padding(4),
-                     Flag("NOCP"),
-                     Flag("INVPC"),
-                     Flag("INVSTATE"),
-                     Flag("UNDEFINSTR"),
-                     Flag("BFARVALID"),
+                     "NOCP" / Flag,
+                     "INVPC" / Flag,
+                     "INVSTATE" / Flag,
+                     "UNDEFINSTR" / Flag,
+                     "BFARVALID" / Flag,
                      Padding(2),
-                     Flag("STKERR"),
-                     Flag("UNSTKERR"),
-                     Flag("IMPRECISERR"),
-                     Flag("PRECISERR"),
-                     Flag("IBUSERR"),
-                     Flag("MMARVALID"),
+                     "STKERR" / Flag,
+                     "UNSTKERR" / Flag,
+                     "IMPRECISERR" / Flag,
+                     "PRECISERR" / Flag,
+                     "IBUSERR" / Flag,
+                     "MMARVALID" / Flag,
                      Padding(2),
-                     Flag("MSTKERR"),
-                     Flag("MUNSTKERR"),
+                     "MSTKERR" / Flag,
+                     "MUNSTKERR" / Flag,
                      Padding(1),
-                     Flag("DACCVIOL"),
-                     Flag("IACCVIOL"),
+                     "DACCVIOL" / Flag,
+                     "IACCVIOL" / Flag,
                      )
 
 SCB_HFSR = 0xe000ed2c
-scb_hfsr = BitStruct("scb_hfsr",
-                     Flag("DEBUG_VT"),
-                     Flag("FORCED"),
+scb_hfsr = BitStruct(
+                     "DEBUG_VT" / Flag,
+                     "FORCED" / Flag,
                      Padding(28),
-                     Flag("VECTTBL"),
+                     "VECTTBL" / Flag,
                      Padding(1),
                      )
 SCB_MMFAR = 0xe000ed34
@@ -79,31 +80,31 @@ SCB_BFAR = 0xe000ed38
 
 MPU_TYPER = 0xe000ed90
 MPU_CR = 0xe000ed94
-mpu_cr = BitStruct("mpu_cr",
+mpu_cr = BitStruct(
                    Padding(29),
-                   Flag("PRIVDEFENA"),
-                   Flag("HFNMIENA"),
-                   Flag("ENABLE"),
+                   "PRIVDEFENA" / Flag,
+                   "HFNMIENA" / Flag,
+                   "ENABLE" / Flag,
                    )
 
 MPU_RNR = 0xe000ed98
-mpu_rnr = BitStruct("mpu_rnr",
+mpu_rnr = BitStruct(
                     Padding(24),
-                    BitField('REGION', 8))
+                    "REGION" / BitsInteger(8))
 
 MPU_RBAR = 0xe000ed9c
-mpu_rbar = BitStruct("mpu_rbar",
-                     BitField('ADDR', 27),
-                     Flag('VALID'),
-                     BitField('REGION', 4))
+mpu_rbar = BitStruct(
+                     "ADDR" / BitsInteger(27),
+                     "VALID" / Flag,
+                     "REGION" / BitsInteger(4))
 
 MPU_RASR = 0xe000eda0
-mpu_rasr = BitStruct("mpu_rasr",
+mpu_rasr = BitStruct(
                      Padding(3),
-                     Flag("XN"),
+                     "XN" / Flag,
                      Padding(1),
                      #BitField("AP", 3),
-                     Enum(BitField("AP", 3),
+                     Enum("AP" / BitsInteger(3),
                           No_access = 0,
                           RW_No_access = 1,
                           RW_RO = 2,
@@ -113,16 +114,16 @@ mpu_rasr = BitStruct("mpu_rasr",
                           INV7 = 7),
                      Padding(2),
                      #BitField("TEX", 3), #Flag("S", 1), #Flag("C", 1), #Flag("B", 1),
-                     Enum(BitField("TEXSCB", 6),
+                     Enum("TEXSCB" / BitsInteger(6),
                           UNSET   =(0b000000),
                           FLASH_RAM   =(0b000010),
                           INTERNAL_RAM=(0b000110),
                           EXTERNAL_RAM=(0b000111),
                           PERIPHERIALS=(0b000101),),
-                     BitField("SRD", 8),
+                     "SRD" / BitsInteger(8),
                      Padding(2),
                      #BitField("SIZE", 5),
-                     Enum(BitField("SIZE", 5),
+                     Enum("SIZE" / BitsInteger(5),
                          unset   =(0b00000), invalid1=(0b00001), invalid2=(0b00010), invalid3=(0b00011),
                          _32B    =(0b00100), _64B    =(0b00101), _128B   =(0b00110), _256B   =(0b00111),
                          _512B   =(0b01000), _1KB    =(0b01001), _2KB    =(0b01010), _4KB    =(0b01011),
@@ -132,4 +133,4 @@ mpu_rasr = BitStruct("mpu_rasr",
                          _32MB   =(0b11000), _64MB   =(0b11001), _128MB  =(0b11010), _256MB  =(0b11011),
                          _512MB  =(0b11100), _1GB    =(0b11101), _2GB    =(0b11110), _4GB    =(0b11111),
                      ),
-                     Flag("Enabled"))
+                     "Enabled" / Flag)

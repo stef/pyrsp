@@ -22,7 +22,8 @@ if os.path.exists(activate_this):
     execfile(activate_this, dict(__file__=activate_this))
 
 import serial
-from pyrsp.utils import hexdump, pack, unpack, unhex, switch_endian, split_by_n
+from pyrsp.utils import (hexdump, pack, unpack, unhex, switch_endian,
+    split_by_n, rsp_decode, stop_reply, stop_event)
 from pyrsp.elf import ELF
 from binascii import hexlify
 
@@ -87,11 +88,15 @@ class STlink2(object):
         self.port.close()
 
 class RSP(object):
-    def __init__(self, port, elffile=None, verbose=False):
+    def __init__(self, port, elffile=None, verbose=False, noack=False):
         """ read the elf file if given by elffile, connects to the
             debugging device specified by port, and initializes itself.
         """
+        # Initially packet acknowledgment is enabled.
+        # https://sourceware.org/gdb/onlinedocs/gdb/Packet-Acknowledgment.html
+        self.ack = True
         self.registers = self.arch['regs']
+        self.reg_fmt = "%%0%ux" % (self.arch['bitsize'] >> 2)
         self.__dict__['br'] = {}
         self.__dict__['verbose'] = verbose
         # open serial connection
@@ -106,37 +111,66 @@ class RSP(object):
         tmp = self.readpkt(timeout=1)
         if tmp and verbose: print 'helo', tmp
 
-        self.port.write(pack('+'))
-
-        tmp = self.readpkt(timeout=1)
-        if tmp and verbose: print 'helo', tmp
-
-        self.send('qSupported')
         #self.port.write(pack('qSupported:multiprocess+;qRelocInsn+'))
-        feats = self.readpkt()
-        if feats:
-            self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
+        self._get_feats()
+
+        # By default, use Z/z packets to manipulate breakpoints
+        self.z_breaks = True
+
+        self._thread = None
+
+        # select all threads initially
+        self.thread = "0"
+
+        if noack and "QStartNoAckMode+" in self.feats:
+            self.fetchOK("QStartNoAckMode")
+            self.ack = False
+            self.read_ack = lambda *_, **__ : None
+
+        # replace deprecated resumption commands with new vCont analogues
+        # https://sourceware.org/gdb/onlinedocs/gdb/Packets.html#vCont-packet
+        if "vContSupported+" in self.feats:
+            actions = self.fetch("vCont?").split(';') # vCont[;action...]
+            if "c" in actions:
+                self.cont = self.vContc
+                self.cont_all = self.vContc_all
+            if "s" in actions:
+                self.step = self.vConts
 
         # attach
         self.connect()
 
+    @property
+    def thread(self):
+        return self._thread
+
+    @thread.setter
+    def thread(self, pid_tid):
+        if self._thread != pid_tid:
+            self.fetchOK("Hg" + pid_tid)
+            self._thread = pid_tid
+
     def connect(self):
         pass
 
-    def send(self, data, retries=50):
-        """ sends data via the RSP protocol to the device """
-        self.port.write(pack(data))
+    def read_ack(self, retries=50):
         res = None
         while not res:
             res = self.port.read()
         discards = []
-        while res!='+' and retries>0:
+        while res != '+' and retries > 0:
             discards.append(res)
-            retries-=1
+            retries -= 1
             res = self.port.read()
-        if len(discards)>0 and self.verbose: print 'send discards', discards
-        if retries==0:
+        if len(discards) > 0 and self.verbose:
+            print 'read_ack discards', discards
+        if retries == 0:
             raise ValueError("retry fail")
+
+    def send(self, data, retries=50):
+        """ sends data via the RSP protocol to the device """
+        self.port.write(pack(data))
+        self.read_ack(retries)
         #print 'sent', data
 
     def readpkt(self, timeout=0):
@@ -156,16 +190,22 @@ class RSP(object):
 
         while True:
             res.append(self.port.read())
-            if res[-1]=='#' and res[-2]!="'":
+            if res[-1]=='#':
                 res.append(self.port.read())
                 res.append(self.port.read())
-                try:
-                    res=unpack(''.join(res))
-                except:
-                    self.port.write('-')
-                    res=[]
-                    continue
-                self.port.write('+')
+                if self.ack:
+                    try:
+                        res = unpack(''.join(res))
+                    except:
+                        self.port.write('-')
+                        res = []
+                        continue
+                    self.port.write('+')
+                else:
+                    # Do not even check packages in NoAck mode.
+                    # If a user relies on the connection robustness then we
+                    # should provide as fast operation as we can.
+                    res = ''.join(res[1:-3])
                 #print "read", res
                 return res
 
@@ -186,18 +226,22 @@ class RSP(object):
         self.store(val,i)
 
     def _get_feats(self):
-        self.port.write(pack('+'))
+        if self.ack:
+            self.port.write(pack('+'))
 
         tmp = self.readpkt(timeout=1)
         if tmp and self.verbose: print 'helo', tmp
 
-        self.send('qSupported')
+        self.send('qSupported:swbreak+;vContSupported+')
         feats = self.readpkt()
         if feats:
             self.feats = dict((ass.split('=') if '=' in ass else (ass,None) for ass in feats.split(';')))
 
     def __getattr__(self, name):
         if name not in self.__dict__ or not self.__dict__[name]:
+            if name=='regs':
+                self.refresh_regs()
+                return self.__dict__[name]
             if name in self.regs.keys():
                 return self.regs[name]
         if name in self.__dict__.keys():
@@ -214,16 +258,24 @@ class RSP(object):
         if addr==None:
             addr=self.elf.workarea
         rd = []
-        i=0
+        end = addr + size
         bsize = int(self.feats['PacketSize'], 16) / 2
-        while(i<size):
-            bsize = bsize if i+bsize<size else size - i
-            #print 'm%x,%x' % (addr+i, bsize)
-            self.send('m%x,%x' % (addr+i, bsize))
-            pkt=self.readpkt()
-            rd.append(unhex(pkt))
-            i+=bsize
-            #print i, size, 'pkt', pkt
+        while addr < end:
+            bsize = bsize if addr + bsize < end else end - addr
+            #print 'm%x,%x' % (addr, bsize)
+            pkt = self.fetch('m%x,%x' % (addr, bsize))
+            if len(pkt) & 1 and pkt[0] == 'E':
+                # There is an assumption that stub only uses 'e' for data
+                # hexadecimal representation and 'E' is only used for errors.
+                # However, no confirmation has been found in the protocol
+                # definition. But, according to the protocol error message
+                # data length is always odd (i.e. Exx).
+                raise RuntimeError("Reading %u bytes at 0x%x failed: %s " % (
+                    bsize, addr, pkt
+                ))
+            rd.append(unhex(rsp_decode(pkt)))
+            addr += bsize
+            #print addr, bsize, 'pkt', pkt
         return ''.join(rd)
 
     def fetch(self,data):
@@ -236,21 +288,48 @@ class RSP(object):
         res = self.fetch(data)
         if res!=ok: raise ValueError(res)
 
+    def vContc_all(self):
+        return self.fetch("vCont;c")
+
+    def vConts_all(self):
+        return self.fetch("vCont;s")
+
+    def vContc(self):
+        return self.fetch("vCont;c:" + self._thread)
+
+    def vConts(self):
+        return self.fetch("vCont;s:" + self._thread)
+
+    def c(self):
+        return self.fetch("c")
+
+    def s(self):
+        return self.fetch("s")
+
+    # They will be replaced with vCont variants if supported by the stub.
+    step = s
+    cont = c
+    # 'c' packet is deprecated for multi-threading support.
+    # But cont_all is same as cont for a single-threaded process.
+    cont_all = c
+
     def set_reg(self, reg, val):
         """ sets value of register reg to val on device """
         if isinstance(val, str):
             self.regs[reg]=val
-        if isinstance(val, int):
-            self.regs[reg]='%x' % val
+        if isinstance(val, (int, long)):
+            self.regs[reg]=self.reg_fmt % val
         self.fetchOK("G%s" % ''.join([switch_endian(self.regs[r]) for r in self.registers if r in self.regs]))
 
     def refresh_regs(self):
         """ loads and caches values of the registers on the device """
         self.send('g')
+        enc_reg_blob = self.readpkt()
+        reg_blob = rsp_decode(enc_reg_blob)
+        raw_regs = split_by_n(reg_blob, self.arch['bitsize']>>2)
         if self.arch['endian']:
-            self.regs=dict(zip(self.registers,(switch_endian(reg) for reg in split_by_n(self.readpkt(),self.arch['bitsize']>>2))))
-        else:
-            self.regs=dict(zip(self.registers,split_by_n(self.readpkt(),self.arch['bitsize']>>2)))
+            raw_regs = iter(switch_endian(reg) for reg in raw_regs)
+        self.regs = dict(zip(self.registers, raw_regs))
 
     def dump_regs(self):
         """ refreshes and dumps registers via stdout """
@@ -279,50 +358,57 @@ class RSP(object):
             tmp = self.fetch('qsThreadInfo')
         return (tid, extra, tids)
 
-    def run(self, start=None):
+    def run(self, start=None, setpc=True):
         """ sets pc to start if given or to entry address from elf header,
             passes control to the device and handles breakpoints
         """
-        if not start:
-            entry = "%08x" % self.elf.entry
-        else:
-            entry = "%08x" % (self.elf.symbols[start] & ~1)
-        if self.verbose: print "set new pc: @test (0x%s)" % entry,
-        self.set_reg('pc', entry)
-        if self.verbose: print 'OK'
+        if setpc:
+            if not start:
+                entry_addr = self.elf.entry
+            else:
+                entry_addr = self.elf.symbols[start]
+            if isinstance(self, CortexM3):
+                entry_addr &= ~1
+            entry = self.reg_fmt % entry_addr
+            if self.verbose: print "set new pc: @test (0x%s)" % entry,
+            self.set_reg(self.pc_reg, entry)
+            if self.verbose: print 'OK'
 
         if self.verbose: print "continuing"
-        sig = self.fetch('c')
-        while sig in ['T05', 'S05']:
+        self.exit = False
+        kind, sig, data = stop_reply(self.cont_all())
+        while kind in ('T', 'S') and sig == 05:
+            # Update current thread for a breakpoint handler.
+            event = stop_event(data)
+            self.thread = event["thread"]
             self.handle_br()
-            sig = self.fetch('c')
+            if self.exit:
+                return
+            # Some threads can be created during the breakpoint handling.
+            # `cont_all` resumes them..
+            kind, sig, data = stop_reply(self.cont_all())
 
-        if sig!='T0B': print 'strange signal', sig
+        if kind == 'W': # The process exited, getting values is impossible
+            return
+
+        if (kind, sig) != ('T', 0x0b): print 'strange signal', sig
         if hasattr(self, 'checkfault'):
             self.checkfault()
         else:
-            src_line = self.get_src_line(int(self.regs['pc'],16 - 1))
+            src_line = self.get_src_line(int(self.regs[self.pc_reg],16 - 1))
             if src_line:
                 print "0 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
             else:
-                print 'pc', self.regs['pc']
-            src_line = self.get_src_line(int(self.regs['lr'],16) -3)
-            if src_line:
-                print "1 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
-            else:
-                print 'lr', self.regs['lr']
+                print self.pc_reg, self.regs[self.pc_reg]
+            if isinstance(self, CortexM3):
+                src_line = self.get_src_line(int(self.regs['lr'],16) -3)
+                if src_line:
+                    print "1 %s:%s %s" % (src_line['file'], src_line['lineno'], src_line['line'])
+                else:
+                    print 'lr', self.regs['lr']
             self.dump_regs()
 
-        res = None
-        while not res:
-            res = self.port.read()
-        discards = []
-        retries = 20
-        while res!='+' and retries>0:
-            discards.append(res)
-            retries-=1
-            res = self.port.read()
-        if len(discards)>0 and self.verbose: print 'send discards', discards
+        self.read_ack(20)
 
         self.port.close(self)
         sys.exit(0)
@@ -331,15 +417,19 @@ class RSP(object):
         """ dumps register on breakpoint/signal, continues if unknown,
             otherwise it calls the appropriate callback.
         """
-        print
-        self.dump_regs()
-        if not self.regs['pc'] in self.br:
+        if self.verbose:
+            print
+            self.dump_regs()
+        else:
+            self.refresh_regs()
+        if not self.regs[self.pc_reg] in self.br:
             print "unknown break point passed"
             self.dump_regs()
             return
         if self.verbose:
-            print 'breakpoint hit:', self.br[self.regs['pc']]['sym']
-        self.br[self.regs['pc']]['cb']()
+            br = self.br[self.regs[self.pc_reg]]
+            print 'breakpoint hit:', (br['sym'] or "0x" + br['addr'])
+        self.br[self.regs[self.pc_reg]]['cb']()
 
     def set_br(self, sym, cb, quiet=False):
         """ sets a breakpoint at symbol sym, and install callback cb
@@ -349,30 +439,53 @@ class RSP(object):
         if not addr:
             print "unknown symbol: %s, ignoring request to set br" % sym
             return
-        addr = "%08x" % (addr & ~1)
+        if isinstance(self, CortexM3):
+            addr &= ~1
+        addr = self.reg_fmt % addr
+        self.set_br_a(addr, cb, quiet=quiet, sym=sym)
+
+    def set_br_a(self, addr, cb, quiet=False, sym=None):
+        """ Sets a breakpoint at address, and install callback cb for it.
+
+            `addr` is a hexadecimal string as defined by RSP protocol.
+            Also, because of this RSP implementation `addr` format should be
+            the same as defined by `reg_fmt`.
+
+            Tips:
+            - Use `reg_fmt` attribute to get `addr` string from an integer.
+            - Normally, an unparsed register value has the same format and can
+              be used as is.
+        """
         if addr in self.br:
-            print "warn: overwriting breakpoint at %s" % sym
-            self.br[addr]={'sym': sym,
-                           'cb': cb,
-                           'old': self.br[addr]['old']}
+            print "warn: overwriting breakpoint at %s" % (sym or "0x" + addr)
+            br = self.br[addr]
+            br.update(sym = sym, cb = cb)
         else:
-            self.br[addr]={'sym': sym,
-                           'cb': cb,
-                           'old': unhex(self.fetch('m%s,2' % addr))}
-        #self.fetch('Z0,%s,2' % addr)
-        tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
-        if self.verbose and not quiet:
-            print "set break: @%s (0x%s)" % (sym, addr), tmp
+            self.br[addr]= br = {'sym': sym, 'addr': addr, 'cb': cb}
+            if self.z_breaks:
+                tmp = self.fetch('Z0,%s,2' % addr)
+                if tmp == "":
+                    # Z/z packages are not supported, use code patching
+                    self.z_breaks = False
+                    br['old'] = unhex(self.fetch('m%s,2' % addr))
+                    tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
+            else:
+                br['old'] = unhex(self.fetch('m%s,2' % addr))
+                tmp = self.fetch('X%s,2:\xbe\xbe' % addr)
+
+            if self.verbose and not quiet:
+                print "set break: @%s (0x%s)" % (sym or "[unknown]", addr), tmp
 
     def del_br(self, addr, quiet=False):
         """ deletes breakpoint at address addr """
-        sym = self.br[addr]['sym']
         #self.fetch('z0,%s,2' % addr)
         if 'old' in self.br[addr]:
             tmp = self.fetch('X%s,2:%s' % (addr, self.br[addr]['old']))
-            if self.verbose and not quiet: print "clear breakpoint: @%s (0x%s)" % (sym, addr), tmp
+            if self.verbose and not quiet:
+                sym = self.br[addr]['sym'] or "[unknown]"
+                print "clear breakpoint: @%s (0x%s)" % (sym, addr), tmp
         else:
-            tmp = self.fetch('Z0,%s,2' % addr)
+            tmp = self.fetch('z0,%s,2' % addr)
             if tmp!= 'OK':
                 print "failed to clear break: @%s (0x%s)" % ('FaultHandler', addr), tmp
             elif self.verbose and not quiet:
@@ -392,7 +505,7 @@ class RSP(object):
             print "continuing and detaching"
         # leave in running state
         self.send('c')
-        sys.exit(0)
+        self.exit = True
 
     def get_src_line(self, addr):
         """ returns the source-code line associated with address addr
@@ -405,12 +518,12 @@ class RSP(object):
         return src_line
 
     def step_over_br(self):
-        sym = self.br[self.regs['pc']]['sym']
-        cb  = self.br[self.regs['pc']]['cb']
-        self.del_br(self.regs['pc'], quiet=True)
-        sig = self.fetch('s')
-        if sig in ['T05', 'T0B']:
-            self.set_br(sym, cb, quiet=True)
+        back = self.br[self.regs[self.pc_reg]]
+        addr = self.regs[self.pc_reg]
+        self.del_br(addr, quiet=True)
+        kind, sig, _ = stop_reply(self.step())
+        if kind == 'T' and sig in (05, 0x0b):
+            self.set_br_a(addr, back["cb"], quiet=True, sym=back["sym"])
         else:
             print 'strange signal while stepi over br, abort'
             sys.exit(1)
@@ -491,6 +604,7 @@ class CortexM3(RSP):
                               "xpsr", "msp", "psp", "special"],
                      'endian': True,
                      'bitsize': 32}
+        self.pc_reg = "pc"
         super(CortexM3,self).__init__(*args, **kwargs)
 
     def get_thread_info(self):
@@ -513,7 +627,7 @@ class CortexM3(RSP):
 
     def checkfault(self):
         # impl check, only dumps now.
-        #sig = self.fetch('s')
+        #kind, sig, data = stop_reply(self.step())
         #print 'sig', sig
         self.dump_mpu()
         print 'hfsr=', self.printreg(scb_hfsr.parse(self.getreg(4, SCB_HFSR)))
@@ -539,7 +653,7 @@ class CortexM3(RSP):
         while(tmp):
             tmp = self.readpkt(timeout=1)
         # enable extended mode
-        self.fetchOK('!')
+        self.extended = self.fetch('!') == "OK"
 
         # setup registers TODO
         # registers should be parsed from the output of, see target.xml
@@ -551,11 +665,12 @@ class CortexM3(RSP):
         self.port.setup(self)
 
         addr=struct.unpack(">I", self.getreg(4, 0x0800000c))[0] - 1
-        self.br[format(addr, '08x')]={'sym': "FaultHandler",
+        addr = self.reg_fmt % addr
+        self.br[addr]={'sym': "FaultHandler", 'addr': addr,
                              'cb': self.checkfault}
-        tmp = self.fetch('Z1,%s,2' % format(addr, 'x'))
+        tmp = self.fetch('Z1,%s,2' % addr)
         if tmp== 'OK':
-            if self.verbose: print "set break: @%s (0x%s)" % ('FaultHandler', format(addr, 'x')), tmp
+            if self.verbose: print "set break: @%s (0x%s)" % ('FaultHandler', addr), tmp
             return
 
         # vector_catch enable hard int bus stat chk nocp mm reset
@@ -578,8 +693,9 @@ class AMD64(RSP):
                               "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
                               "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
                               "mxcsr",],
-                     'endian': False,
+                     'endian': True,
                      'bitsize': 64}
+        self.pc_reg = "rip"
         super(AMD64,self).__init__(*args, **kwargs)
 
 class i386(RSP):
@@ -591,11 +707,12 @@ class i386(RSP):
                              "fctrl", "fstat", "ftag", "fiseg", "fioff", "foseg", "fooff", "fop",
                              "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
                              "mxcsr"],
-                    'endian': False,
+                    'endian': True,
                     'bitsize': 32}
+        self.pc_reg = "eip"
         super(i386,self).__init__(*args, **kwargs)
 
-archmap={'amd64': AMD64, "i386": i386, "cortexm3": CortexM3}
+archmap={'amd64': AMD64, "x86_64": AMD64, "i386": i386, "cortexm3": CortexM3}
 
 def main():
     # parse arch from cmdline
@@ -623,16 +740,7 @@ def main():
             import traceback
             traceback.print_exc()
 
-            res = None
-            while not res:
-                res = rsp.port.read()
-            discards = []
-            retries = 20
-            while res!='+' and retries>0:
-                discards.append(res)
-                retries-=1
-                res = rsp.port.read()
-            if len(discards)>0 and rsp.verbose: print 'send discards', discards
+            rsp.read_ack(20)
 
             rsp.port.close(rsp)
             sys.exit(1)
