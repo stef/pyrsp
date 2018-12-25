@@ -54,7 +54,7 @@ class TestUser(TestRSP):
         if rsp_port is None:
             raise RuntimeError("Cannot find free port!")
         self._port = port = str(rsp_port)
-        self._gdb = gdb = Popen(["gdbserver", "localhost:" + port, self.EXE])
+        self._gdb = gdb = Popen(["gdbserver", "--no-startup-with-shell", "localhost:" + port, self.EXE])
 
         # Wait for gdb to start listening.
         if not wait_for_tcp_port(rsp_port) or gdb.returncode is not None:
