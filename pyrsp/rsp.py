@@ -270,7 +270,7 @@ class RSP(object):
             if name=='feats':
                 self._get_feats()
                 return self.__dict__[name]
-            raise AttributeError, name
+            raise AttributeError(name)
 
     def dump(self, size, addr = None):
         """ dumps data from addr if given otherwise at beginning of
