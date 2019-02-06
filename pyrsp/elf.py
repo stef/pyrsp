@@ -18,6 +18,7 @@
 
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
+from six.moves import range
 
 class FCache():
     """ helper class to read out the source code lines
@@ -78,7 +79,7 @@ class ELF:
 
             res = {}
             if isinstance(section, SymbolTableSection):
-                for i in xrange(section.num_symbols()):
+                for i in range(section.num_symbols()):
                     res[section.get_symbol(i).name]=(section.get_symbol(i).entry.st_value)
             self.symbols = res
 

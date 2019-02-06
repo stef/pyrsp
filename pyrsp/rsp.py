@@ -26,6 +26,7 @@ from pyrsp.utils import (hexdump, pack, unpack, unhex, switch_endian,
     split_by_n, rsp_decode, stop_reply, stop_event)
 from pyrsp.elf import ELF
 from binascii import hexlify
+from six.moves import range
 
 def Debugger(*args, **kwargs):
     if os.path.exists(args[0]):
@@ -639,7 +640,7 @@ class CortexM3(RSP):
 
     def dump_mpu(self):
         print('mpu_cr %s' % self.printreg(mpu_cr.parse(self.getreg(4, MPU_CR))))
-        for region in xrange(8):
+        for region in range(8):
             self.store(struct.pack("<I", region), MPU_RNR)
             print(region)
             print(self.printreg(mpu_rbar.parse(self.getreg(4, MPU_RBAR))))
