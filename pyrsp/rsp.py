@@ -68,6 +68,7 @@ class STlink2(object):
         self.port.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.port.settimeout(1)
         self.port.connect(('localhost',int(port)))
+        self._buf = ""
 
     def setup(self, rsp):
         pass
@@ -79,10 +80,16 @@ class STlink2(object):
         return i
 
     def read(self):
-        try:
-            return self.port.recv(1)
-        except:
-            return ''
+        buf = self._buf
+        if not buf:
+            try:
+                buf = self.port.recv(4096)
+            except:
+                pass
+
+        ret = buf[:1]
+        self._buf = buf[1:]
+        return ret
 
     def close(self):
         self.port.close()
