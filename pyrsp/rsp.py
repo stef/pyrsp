@@ -615,7 +615,7 @@ class RSP(object):
         if self.dump(2048) != '\x00' * 2048:
             raise ValueError('cannot erase work area')
 
-from cortexhwregs import *
+from .cortexhwregs import *
 class CortexM3(RSP):
     def __init__(self, *args,**kwargs):
 
