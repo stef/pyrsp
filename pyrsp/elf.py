@@ -59,7 +59,7 @@ class ELF:
         self.name = name
         self.fcache = FCache()
 
-        with open(self.name,'r') as stream:
+        with open(self.name,'rb') as stream:
             elffile = ELFFile(stream)
 
             # get entry point
