@@ -88,7 +88,8 @@ class STlink2(object):
         self.port.close()
 
 class RSP(object):
-    def __init__(self, port, elffile=None, verbose=False, noack=False):
+    def __init__(self, port, elffile=None, verbose=False, noack=False,
+                 noshell=False):
         """ read the elf file if given by elffile, connects to the
             debugging device specified by port, and initializes itself.
         """
@@ -136,6 +137,14 @@ class RSP(object):
                 self.cont_all = self.vContc_all
             if "s" in actions:
                 self.step = self.vConts
+
+        if noshell and "QStartupWithShell+" in self.feats:
+            # extended mode is required
+            self.fetchOK("!")
+            self.fetchOK("QStartupWithShell:0")
+            self.noshell = True
+        else:
+            self.noshell = False
 
         # attach
         self.connect()
