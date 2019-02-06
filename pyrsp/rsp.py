@@ -397,7 +397,7 @@ class RSP(object):
         if self.verbose: print("continuing")
         self.exit = False
         kind, sig, data = stop_reply(self.cont_all())
-        while kind in ('T', 'S') and sig == 05:
+        while kind in ('T', 'S') and sig == 5:
             # Update current thread for a breakpoint handler.
             event = stop_event(data)
             self.thread = event["thread"]
@@ -542,7 +542,7 @@ class RSP(object):
         addr = self.regs[self.pc_reg]
         self.del_br(addr, quiet=True)
         kind, sig, _ = stop_reply(self.step())
-        if kind == 'T' and sig in (05, 0x0b):
+        if kind == 'T' and sig in (5, 0x0b):
             self.set_br_a(addr, back["cb"], quiet=True, sym=back["sym"])
         else:
             print('strange signal while stepi over br, abort')
