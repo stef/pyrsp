@@ -26,6 +26,7 @@ from pyrsp.utils import (hexdump, pack, unpack, unhex, switch_endian,
     split_by_n, rsp_decode, stop_reply, stop_event)
 from pyrsp.elf import ELF
 from binascii import hexlify
+from six import integer_types
 from six.moves import range
 
 def Debugger(*args, **kwargs):
@@ -338,7 +339,7 @@ class RSP(object):
         """ sets value of register reg to val on device """
         if isinstance(val, str):
             self.regs[reg]=val
-        if isinstance(val, (int, long)):
+        if isinstance(val, integer_types):
             self.regs[reg]=self.reg_fmt % val
         self.fetchOK("G%s" % ''.join([switch_endian(self.regs[r]) for r in self.registers if r in self.regs]))
 
