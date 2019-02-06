@@ -66,13 +66,13 @@ class ELF:
             self.entry = elffile.header.e_entry
 
             # get text seg address
-            section = elffile.get_section_by_name(b'.text')
+            section = elffile.get_section_by_name('.text')
             if not section:
                 raise ValueError('No text segment found.')
             self.workarea = section.header['sh_addr']
 
             # init symbols
-            section = elffile.get_section_by_name(b'.symtab')
+            section = elffile.get_section_by_name('.symtab')
             if not section:
                 raise ValueError('No symbol table found. Perhaps this ELF has been stripped?')
 
@@ -129,7 +129,7 @@ class ELF:
             elffile = ELFFile(stream)
 
             # get text seg address
-            txt = elffile.get_section_by_name(b'.text')
+            txt = elffile.get_section_by_name('.text')
             if not txt:
                 raise ValueError('No text segment found.')
             return txt.data()
