@@ -235,8 +235,12 @@ class RSP(object):
             self.fetchOK('M%x,%x:%s' % (addr, pktlen, pkt))
             addr+=pktlen
 
-    def __getslice__(self, i, j):
-        return self.dump(j-i,i)
+    def __getitem__(self, s):
+        if isinstance(s, slice):
+            return self.dump(s.stop - s.start, s.start)
+        else:
+            # assume that `s` has type compatible with `dump` method
+            return self.dump(1, s)
 
     def __setitem__(self, i,val):
         self.store(val,i)
