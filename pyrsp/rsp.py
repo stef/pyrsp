@@ -519,7 +519,7 @@ class RSP(object):
             device
         """
         # clear all breaks
-        for br in self.br.keys()[:]:
+        for br in tuple(self.br.keys()):
             self.del_br(br)
         if self.verbose:
             print "continuing and detaching"
