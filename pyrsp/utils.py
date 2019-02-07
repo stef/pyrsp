@@ -97,6 +97,22 @@ See: https://wiki.qemu.org/Documentation/QMP
             raise RuntimeError("QMP Error: " + str(response))
         return response
 
+
+if PY3:
+    charcodes = lambda data: iter(data)
+    characters = lambda data: map(chr, data)
+    # charmap is a fast encoder which supports all byte values [0, 255].
+    s = lambda data: data.decode("charmap")
+else:
+    charcodes = lambda data: map(ord, data)
+    characters = lambda data: iter(data)
+    s = lambda data: data
+
+s.__doc__ = """Given bytes data, returns it as `str` in Python version
+independent manier."""
+
+checksum = lambda data: sum(charcodes(data)) & 0xff
+
 def pack(data):
     """ formats data into a RSP packet """
     for a, b in [(x, chr(ord(x) ^ 0x20)) for x in ['}','*','#','$']]:
