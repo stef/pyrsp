@@ -233,7 +233,7 @@ class RSP(object):
         if addr==None:
             addr=self.elf.workarea
         for pkt in split_by_n(hexlify(data), int(self.feats['PacketSize'],16) - 20):
-            pktlen = len(pkt)/2
+            pktlen = len(pkt)//2
             self.fetchOK('M%x,%x:%s' % (addr, pktlen, pkt))
             addr+=pktlen
 
@@ -281,7 +281,7 @@ class RSP(object):
             addr=self.elf.workarea
         rd = []
         end = addr + size
-        bsize = int(self.feats['PacketSize'], 16) / 2
+        bsize = int(self.feats[b'PacketSize'], 16) // 2
         while addr < end:
             bsize = bsize if addr + bsize < end else end - addr
             #print('m%x,%x' % (addr, bsize))
