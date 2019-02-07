@@ -19,11 +19,11 @@
 from socket import SO_REUSEADDR, SOL_SOCKET, socket, AF_INET, SOCK_STREAM
 from time import time
 from json import JSONDecoder, JSONEncoder
+from six import PY3
 
 _json_decoder, _json_encoder = JSONDecoder(), JSONEncoder()
 
-from sys import version_info
-if version_info[0] >= 3:
+if PY3:
     def qmp_encode(_dict):
         return _json_encoder.encode(_dict).encode("utf-8")
     def qmp_decode(_bytes):
