@@ -19,6 +19,7 @@
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
 from six.moves import range
+from pyrsp.utils import s
 
 class FCache():
     """ helper class to read out the source code lines
@@ -114,7 +115,7 @@ class ELF:
             for entry in lineprogram.get_entries():
                 state = entry.state
                 if state:
-                    fname = lineprogram['file_entry'][state.file - 1].name
+                    fname = s(lineprogram['file_entry'][state.file - 1].name)
                     line = self.fcache.get_src_lines(cu_filename, state.line)
                     src_map["%08x" % state.address] = {'file': fname, 'lineno': state.line, 'line': line}
                     try:
