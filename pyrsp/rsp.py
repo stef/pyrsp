@@ -19,6 +19,12 @@
 import os, time, sys, struct, socket
 activate_this = os.path.dirname(__file__)+'/../env/bin/activate_this.py'
 if os.path.exists(activate_this):
+    from six import PY3
+    if PY3: # goddamn py3 has no execfile.
+        def execfile(fpath, gvars):
+            with open(fpath) as f:
+                code = compile(f.read(), fpath, 'exec')
+                exec(code, gvars)
     execfile(activate_this, dict(__file__=activate_this))
 
 import serial
@@ -642,9 +648,10 @@ class CortexM3(RSP):
         print('mpu_cr %s' % self.printreg(mpu_cr.parse(self.getreg(4, MPU_CR))))
         for region in range(8):
             self.store(struct.pack("<I", region), MPU_RNR)
-            print(region)
-            print(self.printreg(mpu_rbar.parse(self.getreg(4, MPU_RBAR))))
-            print(self.printreg(mpu_rasr.parse(self.getreg(4, MPU_RASR))))
+            print("%s %s %s" % (region,
+                                self.printreg(mpu_rbar.parse(self.getreg(4, MPU_RBAR))),
+                                self.printreg(mpu_rasr.parse(self.getreg(4, MPU_RASR)))
+                                ))
 
     def checkfault(self):
         # impl check, only dumps now.
