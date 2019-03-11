@@ -41,7 +41,7 @@ pip install pyelftools pyserial construct six
 ** python example
 #+BEGIN_EXAMPLE python
    from rsp import RSP
-   rsp = RSP('/dev/ttyACM0', 'test.elf') # expects test.elf to exist
+   rsp = CortexM3('/dev/ttyACM0', 'test.elf') # expects test.elf to exist
    rsp.load() # load test.elf into workarea (.text segment)
 
    def br_cb(self):
@@ -73,7 +73,7 @@ pip install pyelftools pyserial construct six
    result, barring the custom callback can also be produced by
    running:
 #+BEGIN_EXAMPLE
-$ rsp.py /dev/ttyACM0 test
+$ rsp.py cortexm3 /dev/ttyACM0 test
 #+END_EXAMPLE
 ** Example session
    see the code running below in example/
