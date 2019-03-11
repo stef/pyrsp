@@ -1,6 +1,6 @@
 * pyrsp
 
-pyrsp v0.2 is a simple wrapper around the [[https://sourceware.org/gdb/current/onlinedocs/gdb/Remote-Protocol.html#Remote-Protocol][GDB Remote serial
+pyrsp is a simple wrapper around the [[https://sourceware.org/gdb/current/onlinedocs/gdb/Remote-Protocol.html#Remote-Protocol][GDB Remote serial
 protocol]]. Currently ARM Cortex M3 devices can be tested with the
 [[https://github.com/gsmcmullin/blackmagic][Blackmagic JTAG debugger]] and i386 and AMD64 qemu targets are supported
 with qemu. But it should be very simple to support other devices that
@@ -19,6 +19,13 @@ pip install pyelftools pyserial construct six
 #+END_EXAMPLE
 
 ** changes
+*** v0.4 - Thanks <3 Willem, Vasily and Dmitry from ispras.ru 
+    - python3 support
+    - support for debugging multithreading userspace programs
+    - more robust qemu debugging
+    - much improved tests
+    - RLE data handling in protocol
+    - support for new construct api
 *** v0.3
     - support for STLink2 devices
     - rudimentary support for dumping fault status and mpu registers
