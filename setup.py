@@ -12,7 +12,7 @@ def read(fname):
 
 setup(
     name = "pyrsp",
-    version = "0.4",
+    version = "0.4.0.1",
     author = "Stefan Marsiske",
     author_email = "s@ctrlc.hu",
     description = ("simple GDB remote serial protocol wrapper"),
