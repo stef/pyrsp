@@ -15,7 +15,7 @@ elf file and display source code associated with addresses.
 
 ** depends
 #+BEGIN_EXAMPLE
-pip install pyelftools pyserial construct
+pip install pyelftools pyserial construct six
 #+END_EXAMPLE
 
 ** changes

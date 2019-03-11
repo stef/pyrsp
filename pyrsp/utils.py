@@ -19,11 +19,11 @@
 from socket import SO_REUSEADDR, SOL_SOCKET, socket, AF_INET, SOCK_STREAM
 from time import time
 from json import JSONDecoder, JSONEncoder
+from six import PY3
 
 _json_decoder, _json_encoder = JSONDecoder(), JSONEncoder()
 
-from sys import version_info
-if version_info[0] >= 3:
+if PY3:
     def qmp_encode(_dict):
         return _json_encoder.encode(_dict).encode("utf-8")
     def qmp_decode(_bytes):
@@ -97,28 +97,54 @@ See: https://wiki.qemu.org/Documentation/QMP
             raise RuntimeError("QMP Error: " + str(response))
         return response
 
+
+if PY3:
+    charcodes = lambda data: iter(data)
+    characters = lambda data: map(chr, data)
+    # charmap is a fast encoder which supports all byte values [0, 255].
+    s = lambda data: data.decode("charmap")
+else:
+    charcodes = lambda data: map(ord, data)
+    characters = lambda data: iter(data)
+    s = lambda data: data
+
+s.__doc__ = """Given bytes data, returns it as `str` in Python version
+independent manier."""
+
+checksum = lambda data: sum(charcodes(data)) & 0xff
+
+# precompute escapes for `pack`
+UNESCAPE = [b"%c" % code for code in range(256)]
+for x in [b'}', b'*', b'#', b'$']:
+    UNESCAPE[ord(x)] = b"}%c" % (ord(x) ^ 0x20)
+
 def pack(data):
     """ formats data into a RSP packet """
-    for a, b in [(x, chr(ord(x) ^ 0x20)) for x in ['}','*','#','$']]:
-        data = data.replace(a,'}%s' % b)
-    return "$%s#%02X" % (data, (sum(ord(c) for c in data) % 256))
+    res = b"$"
+    _sum = 0
+    for code in charcodes(data):
+        res += UNESCAPE[code]
+        _sum += code
+    res += b"#%02X" % (_sum & 0xff)
+    return res
 
 def unpack(pkt):
     """ unpacks an RSP packet, returns the data"""
-    if pkt[0]!='$' or pkt[-3]!='#':
+    if pkt[:1] != b'$' or pkt[-3:-2] != b'#':
         raise ValueError('bad packet')
-    if (sum(ord(c) for c in pkt[1:-3]) % 256) != int(pkt[-2:],16):
+    if checksum(pkt[1:-3]) != int(pkt[-2:], 16):
         raise ValueError('bad checksum')
     pkt = pkt[1:-3]
     return pkt
 
+
 def unhex(data):
     """ takes a hex encoded string and returns the binary representation """
-    return ''.join(chr(int(x,16)) for x in split_by_n(data,2))
+    return b''.join(b"%c" % int(x, 16) for x in split_by_n(data, 2))
 
 def switch_endian(data):
     """ byte-wise reverses a hex encoded string """
-    return ''.join(reversed(list(split_by_n( data ,2))))
+    return b''.join(reversed(list(split_by_n(data, 2))))
 
 def split_by_n( seq, n ):
     """A generator to divide a sequence into chunks of n units.
@@ -129,11 +155,17 @@ def split_by_n( seq, n ):
 
 def hexdump(data, ptr=0):
     """ returns data formatted as a hexdump """
-    return "\t%s" % '\n\t'.join(["%08x | %s %s" % ((i*32)+ptr,
-                                                   ' '.join([''.join(["%02x" % ord(c) for c in word])
-                                                             for word in split_by_n(line,8)]),
-                                                   ''.join([c if c.isalnum() else '.' for c in line]))
-                                 for i, line in enumerate(split_by_n(data,32))])
+    return "\t%s" % '\n\t'.join(
+        "%08x | %s %s" % (
+            (i << 5) + ptr,
+            ' '.join(
+                ''.join(map(
+                    "%02x".__mod__, charcodes(word)
+                )) for word in split_by_n(line, 8)
+            ),
+            ''.join(c if c.isalnum() else '.' for c in characters(line))
+        ) for i, line in enumerate(split_by_n(data, 32))
+    )
 
 def find_free_port(start = 4321):
     "Search free TCP port for listening."
@@ -164,30 +196,29 @@ def rsp_decode(data):
     """ Decodes run-length encoded data.
         See: https://sourceware.org/gdb/onlinedocs/gdb/Overview.html
     """
-    return "".join(rsp_decode_parts(data))
+    return b"".join(rsp_decode_parts(data))
 
 def rsp_decode_parts(data):
     """ An internal variant of run-length decoder.
         It yields parts of decoded data.
     """
-    parts = data.split('*')
+    parts = data.split(b'*')
     i = iter(parts)
     prev = next(i)
     yield prev
     for cur in i:
-        try:
-            n = ord(cur[0]) - 29
-        except IndexError:
-            # paired stars, one by one
-            yield prev[-1] * 13 # ord("*") - 29
+        if cur:
+            n = ord(cur[:1]) - 29
+            yield prev[-1:] * n
+            yield cur[1:]
+        else:
+            # empty part means paired stars, one by one
+            yield prev[-1:] * 13 # ord("*") - 29
             try:
                 cur = next(i)
             except StopIteration:
                 break
             yield cur
-        else:
-            yield prev[-1] * n
-            yield cur[1:]
         prev = cur
 
 def stop_reply(packet):
@@ -196,19 +227,19 @@ def stop_reply(packet):
 
         :returns: tuple (kind, signal, data), signal and data can be None
     """
-    kind = packet[0]
-    if kind == 'T':
+    kind = packet[:1]
+    if kind == b'T':
         signal, data = int(packet[1:3], 16), packet[3:]
-    elif kind == 'S':
+    elif kind == b'S':
         signal, data = int(packet[1:3], 16), None
-    elif kind == 'N':
+    elif kind == b'N':
         signal, data = None, None
-    elif kind in ('O', 'F'):
+    elif kind in (b'O', b'F'):
         signal, data = None, packet[1:]
-    elif kind in ('W', 'X', 'w'):
+    elif kind in (b'W', b'X', b'w'):
         if len(packet) > 3:
             # multiprocess
-            kind_signal, data = packet.split(";", 1)
+            kind_signal, data = packet.split(b";", 1)
             signal = int(kind_signal[1:], 16)
         else:
             signal, data = int(packet[1:3], 16), None
@@ -223,8 +254,8 @@ def stop_event(data):
     event = {}
 
     while data:
-        pair, data = data.split(';', 1)
-        n, r = pair.split(':', 1)
+        pair, data = data.split(b';', 1)
+        n, r = pair.split(b':', 1)
         event[n] = r
 
     return event

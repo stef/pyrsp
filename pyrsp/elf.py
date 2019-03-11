@@ -18,6 +18,8 @@
 
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
+from six.moves import range
+from pyrsp.utils import s
 
 class FCache():
     """ helper class to read out the source code lines
@@ -59,26 +61,26 @@ class ELF:
         self.name = name
         self.fcache = FCache()
 
-        with open(self.name,'r') as stream:
+        with open(self.name,'rb') as stream:
             elffile = ELFFile(stream)
 
             # get entry point
             self.entry = elffile.header.e_entry
 
             # get text seg address
-            section = elffile.get_section_by_name(b'.text')
+            section = elffile.get_section_by_name('.text')
             if not section:
                 raise ValueError('No text segment found.')
             self.workarea = section.header['sh_addr']
 
             # init symbols
-            section = elffile.get_section_by_name(b'.symtab')
+            section = elffile.get_section_by_name('.symtab')
             if not section:
                 raise ValueError('No symbol table found. Perhaps this ELF has been stripped?')
 
             res = {}
             if isinstance(section, SymbolTableSection):
-                for i in xrange(section.num_symbols()):
+                for i in range(section.num_symbols()):
                     res[section.get_symbol(i).name]=(section.get_symbol(i).entry.st_value)
             self.symbols = res
 
@@ -113,7 +115,7 @@ class ELF:
             for entry in lineprogram.get_entries():
                 state = entry.state
                 if state:
-                    fname = lineprogram['file_entry'][state.file - 1].name
+                    fname = s(lineprogram['file_entry'][state.file - 1].name)
                     line = self.fcache.get_src_lines(cu_filename, state.line)
                     src_map["%08x" % state.address] = {'file': fname, 'lineno': state.line, 'line': line}
                     try:
@@ -129,7 +131,7 @@ class ELF:
             elffile = ELFFile(stream)
 
             # get text seg address
-            txt = elffile.get_section_by_name(b'.text')
+            txt = elffile.get_section_by_name('.text')
             if not txt:
                 raise ValueError('No text segment found.')
             return txt.data()

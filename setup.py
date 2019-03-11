@@ -26,7 +26,7 @@ setup(
           ],
        },
     long_description=read('README.org'),
-    install_requires = ("pyelftools", "pyserial", "construct"),
+    install_requires = ("pyelftools", "pyserial", "construct", "six"),
     classifiers = ["Development Status :: 4 - Beta",
                    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
                    ],

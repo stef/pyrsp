@@ -191,7 +191,7 @@ class TestUserMemory(TestUser):
     def test_dump(self):
         target = self._target
 
-        expected = 'f' * (self.DEFS["NUB_KIBS"] << 10)
+        expected = b'f' * (self.DEFS["NUB_KIBS"] << 10)
 
         def br():
             ptr = int(target.regs[self._arg2reg[0]], 16)
@@ -212,7 +212,7 @@ class TestUserMemory(TestUser):
         # checksum. "'" is before "#" because ord("'") - 29 == 10.
         # That means "repeat previous character 10 times yet".
         # I.e. '6' + '6' * 10, see run-length encoding of GDB RSP for details.
-        expected = "vfffff"
+        expected = b"vfffff"
 
         def br():
             ptr = int(target.regs[self._arg2reg[0]], 16)
