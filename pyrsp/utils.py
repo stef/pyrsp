@@ -16,10 +16,11 @@
 
 # (C) 2014 by Stefan Marsiske, <s@ctrlc.hu>
 
-from socket import SO_REUSEADDR, SOL_SOCKET, socket, AF_INET, SOCK_STREAM
+from socket import socket, AF_INET, SOCK_STREAM
 from time import time
 from json import JSONDecoder, JSONEncoder
 from six import PY3
+from psutil import net_connections
 
 _json_decoder, _json_encoder = JSONDecoder(), JSONEncoder()
 
@@ -183,13 +184,12 @@ def find_free_port(start = 4321):
     # return None
 
 def wait_for_tcp_port(port, timeout = 5.0):
-    test_socket = socket(AF_INET, SOCK_STREAM)
-    test_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
     t0 = time()
     while time() - t0 < timeout:
-        if not test_socket.connect_ex(("localhost", port)):
-            test_socket.close()
-            return True
+        conns = net_connections(kind = "tcp4")
+        for conn in conns:
+            if conn.laddr.port == port:
+                return True
     return False
 
 def rsp_decode(data):
