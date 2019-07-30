@@ -407,7 +407,14 @@ class RSP(object):
         while kind in (b'T', b'S') and sig == 5:
             # Update current thread for a breakpoint handler.
             event = stop_event(data)
-            self.thread = event[b"thread"]
+            # If server does not specify a thread explicitly then assume that
+            # current thread has not been changed.
+            # XXX: There is no statement found in the protocol specification
+            # about that aspect. Moreover, it's server implementation
+            # dependent. So, a user must manage threads carefully with respect
+            # to the implementation.
+            if b"thread" in event:
+                self.thread = event[b"thread"]
             self.handle_br()
             if self.exit:
                 return
