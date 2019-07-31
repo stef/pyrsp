@@ -622,6 +622,18 @@ class RSP(object):
         if self.dump(2048) != b'\x00' * 2048:
             raise ValueError('cannot erase work area')
 
+    def get_arg(self, n):
+        "Returns hex encoded value of argument #n of current function call"
+        try:
+            # call_regs attribute is set by either user or predefined
+            # targets (below)
+            reg_name = self.call_regs[n - 1]
+        except IndexError:
+            # TODO: implement getting from stack
+            raise NotImplementedError(
+                "Getting of argument #%d is not implemented" % n)
+        return self.regs[reg_name]
+
 from .cortexhwregs import *
 class CortexM3(RSP):
     def __init__(self, *args,**kwargs):
@@ -711,6 +723,8 @@ class CortexM3(RSP):
                 print(unhex(pkt[1:-1]))
             pkt=self.readpkt()
 
+    call_regs = ("r0", "r1", "r2", "r3")
+
 class AMD64(RSP):
     def __init__(self, *args,**kwargs):
         self.arch = {'regs': ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp",
@@ -726,6 +740,9 @@ class AMD64(RSP):
         self.pc_reg = "rip"
         super(AMD64,self).__init__(*args, **kwargs)
 
+    # System V AMD64 ABI calling convention is assumed
+    call_regs = ("rdi", "rsi", "rdx", "rcx", "r8", "r9") + tuple("xmm%d" for d in range(8))
+
 class i386(RSP):
     # TODO gdb sends qSupported:multiprocess+;xmlRegisters=i386;qRelocInsn+
     def __init__(self, *args,**kwargs):
@@ -739,6 +756,9 @@ class i386(RSP):
                     'bitsize': 32}
         self.pc_reg = "eip"
         super(i386,self).__init__(*args, **kwargs)
+
+    # fastcall calling convention is assumed
+    call_regs = ("ecx", "edx")
 
 archmap={'amd64': AMD64, "x86_64": AMD64, "i386": i386, "cortexm3": CortexM3}
 
