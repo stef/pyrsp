@@ -37,13 +37,6 @@ class TestUser(TestRSP):
             self.skipTest("No RSP target for " + machine())
             return
 
-        # Passing function arguments through registers
-        self._arg2reg = {
-            "i386" : ("ecx", "edx") # fastcall calling convention is assumed
-          , "x86_64" : ("rdi", "rsi")
-          , "arm" : ("r0", "r1")
-        }.get(machine(), None)
-
         LDFLAGS = " ".join(("-l" + l) for l in self.LIBS)
         CFLAGS = " ".join("-D%s=%s" % (D, V) for D, V in self.DEFS.items())
         self.assertEqual(
@@ -194,8 +187,8 @@ class TestUserMemory(TestUser):
         expected = b'f' * (self.DEFS["NUB_KIBS"] << 10)
 
         def br():
-            ptr = int(target.regs[self._arg2reg[0]], 16)
-            size = int(target.regs[self._arg2reg[1]], 16)
+            ptr = int(target.get_arg(1), 16)
+            size = int(target.get_arg(2), 16)
             data = target[ptr:ptr + size]
             self.assertEqual(data, expected, "incorrect data")
             target.step_over_br()
@@ -215,7 +208,7 @@ class TestUserMemory(TestUser):
         expected = b"vfffff"
 
         def br():
-            ptr = int(target.regs[self._arg2reg[0]], 16)
+            ptr = int(target.get_arg(1), 16)
             target[ptr] = expected
             data = target[ptr:ptr + len(expected)]
             self.assertEqual(data, expected, "incorrect data")
@@ -239,7 +232,7 @@ class TestUserCallback(TestUser):
 
         def br_caller():
             # get the callback address and set a breakpoint on it
-            cb_addr_str = target.regs[self._arg2reg[0]]
+            cb_addr_str = target.get_arg(1)
             target.set_br_a(cb_addr_str, br_callback)
             target.step_over_br()
 
