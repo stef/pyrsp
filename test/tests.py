@@ -11,7 +11,7 @@ parent_dir = split(test_dir)[0]
 # adjust PYTHONPATH to import pyrsp
 from sys import path as PYTHONPATH
 PYTHONPATH.insert(0, parent_dir)
-from pyrsp.rsp import archmap, CortexM3
+from pyrsp.rsp import archmap
 from pyrsp.utils import find_free_port, wait_for_tcp_port, QMP
 
 
@@ -21,39 +21,35 @@ def run(*args, **kw):
 
 class TestRSP(TestCase):
     noack = False
+    # CPU architecture of RSP target.
+    arch = machine()
 
+    def __start_gdb__(self, port):
+        raise NotImplementedError("Child class must launch GDB server or"
+            " any GDB RSP compatible server on given port %u" % port)
 
-class TestUser(TestRSP):
-    "Test for userspace program debugging."
-
-    DEFS = {}
-    # SRC, EXE must be defined by child classes
-    LIBS = []
+    # EXE must be defined by child classes. EXE is path to executable file
+    # under debug, with debug info. It must be defined before __start_gdb__
+    # returned.
 
     def setUp(self):
         try:
-            rsp = archmap[machine()]
+            rsp = archmap[self.arch]
         except KeyError:
             self.skipTest("No RSP target for " + machine())
             return
 
-        LDFLAGS = " ".join(("-l" + l) for l in self.LIBS)
-        CFLAGS = " ".join("-D%s=%s" % (D, V) for D, V in self.DEFS.items())
-        self.assertEqual(
-            run("gcc", "-no-pie", "-o", self.EXE, "-g", "-O0", CFLAGS, self.SRC, LDFLAGS),
-            0
-        )
         rsp_port = find_free_port()
         if rsp_port is None:
             raise RuntimeError("Cannot find free port!")
-        self._port = port = str(rsp_port)
-        self._gdb = gdb = Popen(["gdbserver", "localhost:" + port, self.EXE])
 
-        # Wait for gdb to start listening.
-        if not wait_for_tcp_port(rsp_port) or gdb.returncode is not None:
-            raise RuntimeError("gdbserver malfunction")
+        self.__start_gdb__(rsp_port)
 
-        self._target = rsp(self._port,
+        # Wait for server to start listening.
+        if not wait_for_tcp_port(rsp_port) or self._gdb.returncode is not None:
+            raise RuntimeError("server malfunction")
+
+        self._target = rsp(str(rsp_port),
             elffile = self.EXE,
             verbose = True,
             noack = self.noack,
@@ -62,6 +58,24 @@ class TestUser(TestRSP):
 
     def tearDown(self):
         self._gdb.terminate()
+
+
+class TestUser(TestRSP):
+    "Test for userspace program debugging."
+
+    DEFS = {}
+    # SRC must be defined by child classes
+    LIBS = []
+
+    def __start_gdb__(self, port):
+        LDFLAGS = " ".join(("-l" + l) for l in self.LIBS)
+        CFLAGS = " ".join("-D%s=%s" % (D, V) for D, V in self.DEFS.items())
+        self.assertEqual(
+            run("gcc", "-no-pie", "-o", self.EXE, "-g", "-O0", CFLAGS, self.SRC, LDFLAGS),
+            0
+        )
+
+        self._gdb = Popen(["gdbserver", "localhost:%u" % port, self.EXE])
 
 
 class TestUserSimple(TestUser):
@@ -245,45 +259,35 @@ class TestUserCallback(TestUser):
 
 
 class TestARM(TestRSP):
+    arch = "cortexm3"
 
-    def setUp(self):
+    def __start_gdb__(self, rsp_port):
         self.example_dir = join(parent_dir, "example")
-        self.elf_path = join(self.example_dir, "test.elf")
+        self.EXE = join(self.example_dir, "test.elf")
 
         self.assertEqual(run("make", cwd = self.example_dir), 0)
-        rsp_port = find_free_port()
         qmp_port = find_free_port(rsp_port + 1)
-        if (rsp_port or qmp_port) is None:
-            raise RuntimeError("Cannot find free port!")
-        self._port = str(rsp_port)
+        if qmp_port is None:
+            raise RuntimeError("Cannot find free port for Qemu QMP!")
+
         qargs = [
             "qemu-system-arm",
             "-machine", "netduino2",
-            "-kernel", self.elf_path,
+            "-kernel", self.EXE,
             "-S", # guest is initially stopped
-            "-gdb", "tcp:localhost:" + self._port,
+            "-gdb", "tcp:localhost:%u" % rsp_port,
             # QEMU monitor protocol for VM management
             "-qmp", "tcp:localhost:%u,server,nowait" % qmp_port,
             # do not create a window
             "-nographic"
         ]
         print(" ".join(qargs))
-        self._qemu = qemu = Popen(qargs)
+        self._gdb = qemu = Popen(qargs)
 
-        if (not wait_for_tcp_port(qmp_port)
-            or not wait_for_tcp_port(rsp_port)
-            or qemu.returncode is not None
-        ):
+        if not wait_for_tcp_port(qmp_port) or qemu.returncode is not None:
             raise RuntimeError("QEMU malfunction")
 
         self.qmp = QMP(qmp_port)
-
-        self._target = CortexM3(self._port,
-            elffile = self.elf_path,
-            verbose = True,
-            noack = self.noack
-        )
-
 
     def test_example(self):
         target = self._target
@@ -304,9 +308,6 @@ class TestARM(TestRSP):
         target.dump_regs()
         self.assertEqual(int(target.r1, 16), new_val,
                          "the register was not set")
-
-    def tearDown(self):
-        self._qemu.terminate()
 
 # Generate NoAck Variants of tests
 
