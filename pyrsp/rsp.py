@@ -556,7 +556,7 @@ class RSP(object):
         addr = self.regs[self.pc_reg]
         self.del_br(addr, quiet=True)
         kind, sig, _ = stop_reply(self.step())
-        if kind == b'T' and sig in (5, 0x0b):
+        if kind in (b'T', b'S') and sig in (5, 0x0b):
             self.set_br_a(addr, back["cb"], quiet=True, sym=back["sym"])
         else:
             print('strange signal while stepi over br, abort')
