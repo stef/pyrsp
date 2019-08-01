@@ -307,6 +307,16 @@ class TestUserI386FastCall(QemuUserI386, TestRSP):
         target.run(setpc = False)
         self.assertTrue(self._br, "breakpoint skipped")
 
+    def test_fastcall(self):
+        target = self._target
+        def br():
+            self.assertEqual(int(target.get_arg(1), 16), 0xDEADBEEF,
+                "foo argument has unexpected value")
+            target.step_over_br()
+
+        target.set_br("foo", br)
+        target.run(setpc = False)
+
 
 class TestARM(ExampleBuilder, TestRSP):
     arch = "cortexm3"
