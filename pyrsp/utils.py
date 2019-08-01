@@ -188,7 +188,8 @@ def wait_for_tcp_port(port, timeout = 5.0):
     while time() - t0 < timeout:
         conns = net_connections(kind = "tcp4")
         for conn in conns:
-            if conn.laddr.port == port:
+            # Note that laddr became a named tuple only since 5.3.0
+            if conn.laddr[1] == port:
                 return True
     return False
 

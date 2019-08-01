@@ -3,3 +3,4 @@ test-calls.exe
 test-threads.exe
 test-callback.exe
 test-memory.exe
+test-fastcall.exe
