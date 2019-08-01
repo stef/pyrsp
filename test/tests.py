@@ -26,6 +26,8 @@ class GCCBuilder(object):
     #       RSP server & client, defined by that helper
     DEFS = {}
     LIBS = []
+    EXTRA_CFLAGS = ""
+    GCC_PREFIX = ""
 
     def __build__(self):
         # ".exe" is not required by nix but for Windows it is.
@@ -33,7 +35,8 @@ class GCCBuilder(object):
         LDFLAGS = " ".join(("-l" + l) for l in self.LIBS)
         CFLAGS = " ".join("-D%s=%s" % (D, V) for D, V in self.DEFS.items())
         self.assertEqual(
-            run("gcc", "-no-pie", "-o", self.EXE, "-g", "-O0", CFLAGS, self.SRC, LDFLAGS),
+            run(self.GCC_PREFIX + "gcc", "-no-pie", "-o", self.EXE, "-g", "-O0",
+                CFLAGS, self.EXTRA_CFLAGS, self.SRC, LDFLAGS),
             0
         )
 
@@ -268,6 +271,39 @@ class TestUserCallback(TestUser):
         target.set_br("caller", br_caller)
 
         self._br = False
+        target.run(setpc = False)
+        self.assertTrue(self._br, "breakpoint skipped")
+
+
+class QemuI386Launcher(GCCBuilder, TestRSP):
+    arch = "i386"
+
+    def __start_gdb__(self, port):
+        qargs = [
+            "qemu-i386",
+            "-g", str(port),
+            self.EXE
+        ]
+
+        self._gdb = Popen(qargs)
+
+
+class QemuUserI386(QemuI386Launcher, GCCBuilder):
+    EXTRA_CFLAGS = "-m32"
+    CROSS_PREFIX = "x86_64-linux-gnu-"
+
+
+class TestUserI386FastCall(QemuUserI386, TestRSP):
+    SRC = join(test_dir, "test-fastcall.c")
+
+    def test_br(self):
+        target = self._target
+        def br():
+            self._br = True
+            target.step_over_br()
+
+        self._br = False
+        target.set_br("foo", br)
         target.run(setpc = False)
         self.assertTrue(self._br, "breakpoint skipped")
 
