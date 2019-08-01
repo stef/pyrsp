@@ -3,7 +3,7 @@ from unittest import main, TestCase
 from subprocess import Popen
 from struct import pack
 
-from os.path import split, join
+from os.path import split, join, splitext
 
 test_dir = split(__file__)[0]
 parent_dir = split(test_dir)[0]
@@ -19,10 +19,41 @@ def run(*args, **kw):
     return Popen([a for a in args if a], **kw).wait()
 
 
+class GCCBuilder(object):
+
+    # SRC - path to source file, must be specified by child classes
+    # EXE - path to executable file with debug info for both
+    #       RSP server & client, defined by that helper
+    DEFS = {}
+    LIBS = []
+
+    def __build__(self):
+        # ".exe" is not required by nix but for Windows it is.
+        self.EXE = splitext(self.SRC)[0] + ".exe"
+        LDFLAGS = " ".join(("-l" + l) for l in self.LIBS)
+        CFLAGS = " ".join("-D%s=%s" % (D, V) for D, V in self.DEFS.items())
+        self.assertEqual(
+            run("gcc", "-no-pie", "-o", self.EXE, "-g", "-O0", CFLAGS, self.SRC, LDFLAGS),
+            0
+        )
+
+
+class ExampleBuilder(object):
+
+    def __build__(self):
+        self.example_dir = join(parent_dir, "example")
+        self.EXE = join(self.example_dir, "test.elf")
+
+        self.assertEqual(run("make", cwd = self.example_dir), 0)
+
+
 class TestRSP(TestCase):
     noack = False
     # CPU architecture of RSP target.
     arch = machine()
+
+    def __build__(self):
+        "Child class my build something before debugging start"
 
     def __start_gdb__(self, port):
         raise NotImplementedError("Child class must launch GDB server or"
@@ -43,6 +74,7 @@ class TestRSP(TestCase):
         if rsp_port is None:
             raise RuntimeError("Cannot find free port!")
 
+        self.__build__()
         self.__start_gdb__(rsp_port)
 
         # Wait for server to start listening.
@@ -60,28 +92,15 @@ class TestRSP(TestCase):
         self._gdb.terminate()
 
 
-class TestUser(TestRSP):
+class TestUser(GCCBuilder, TestRSP):
     "Test for userspace program debugging."
 
-    DEFS = {}
-    # SRC must be defined by child classes
-    LIBS = []
-
     def __start_gdb__(self, port):
-        LDFLAGS = " ".join(("-l" + l) for l in self.LIBS)
-        CFLAGS = " ".join("-D%s=%s" % (D, V) for D, V in self.DEFS.items())
-        self.assertEqual(
-            run("gcc", "-no-pie", "-o", self.EXE, "-g", "-O0", CFLAGS, self.SRC, LDFLAGS),
-            0
-        )
-
         self._gdb = Popen(["gdbserver", "localhost:%u" % port, self.EXE])
 
 
 class TestUserSimple(TestUser):
     SRC = join(test_dir, "test-simple.c")
-    # ".exe" is not required by nix but for Windows it is.
-    EXE = join(test_dir, "test-simple.exe")
 
     def test_simple(self):
         self._target.run(setpc=False)
@@ -150,7 +169,6 @@ class TestUserSimple(TestUser):
 class TestUserCalls(TestUser):
     DEFS = dict(NUM_CALLS = 10)
     SRC = join(test_dir, "test-calls.c")
-    EXE = join(test_dir, "test-calls.exe")
 
     def test_br_trace(self):
         target = self._target
@@ -170,7 +188,6 @@ class TestUserCalls(TestUser):
 class TestUserThreads(TestUser):
     DEFS = dict(NUM_THREADS = 20)
     SRC = join(test_dir, "test-threads.c")
-    EXE = join(test_dir, "test-threads.exe")
     LIBS = ["pthread"]
 
 
@@ -192,8 +209,6 @@ class TestUserThreads(TestUser):
 class TestUserMemory(TestUser):
     DEFS = dict(NUB_KIBS = 10)
     SRC = join(test_dir, "test-memory.c")
-    EXE = join(test_dir, "test-memory.exe")
-
 
     def test_dump(self):
         target = self._target
@@ -235,7 +250,6 @@ class TestUserMemory(TestUser):
 
 class TestUserCallback(TestUser):
     SRC = join(test_dir, "test-callback.c")
-    EXE = join(test_dir, "test-callback.exe")
 
     def test_br_at_addr(self):
         target = self._target
@@ -258,14 +272,10 @@ class TestUserCallback(TestUser):
         self.assertTrue(self._br, "breakpoint skipped")
 
 
-class TestARM(TestRSP):
+class TestARM(ExampleBuilder, TestRSP):
     arch = "cortexm3"
 
     def __start_gdb__(self, rsp_port):
-        self.example_dir = join(parent_dir, "example")
-        self.EXE = join(self.example_dir, "test.elf")
-
-        self.assertEqual(run("make", cwd = self.example_dir), 0)
         qmp_port = find_free_port(rsp_port + 1)
         if qmp_port is None:
             raise RuntimeError("Cannot find free port for Qemu QMP!")
