@@ -411,6 +411,7 @@ class RSP(object):
         while kind in (b'T', b'S') and sig == 5:
             # Update current thread for a breakpoint handler.
             event = stop_event(data)
+            self.stop_event = (kind, sig, event)
             # If server does not specify a thread explicitly then assume that
             # current thread has not been changed.
             # XXX: There is no statement found in the protocol specification
