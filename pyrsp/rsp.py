@@ -94,6 +94,10 @@ class STlink2(object):
                 buf = self.port.recv(4096)
             except:
                 pass
+            else:
+                if buf == b'':
+                    # according to https://docs.python.org/3/howto/sockets.html
+                    raise RuntimeError("socket connection broken")
 
         ret = buf[:1]
         self._buf = buf[1:]
