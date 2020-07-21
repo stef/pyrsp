@@ -92,7 +92,7 @@ class STlink2(object):
         if not buf:
             try:
                 buf = self.port.recv(4096)
-            except:
+            except socket.timeout:
                 pass
             else:
                 if buf == b'':
