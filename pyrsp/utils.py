@@ -126,7 +126,7 @@ def pack(data):
     for code in charcodes(data):
         res += UNESCAPE[code]
         _sum += code
-    res += b"#%02X" % (_sum & 0xff)
+    res += b"#%02x" % (_sum & 0xff)
     return res
 
 def unpack(pkt):
