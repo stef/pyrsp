@@ -190,6 +190,12 @@ def wait_for_tcp_port(port, timeout = 5.0):
         for conn in conns:
             # Note that laddr became a named tuple only since 5.3.0
             if conn.laddr[1] == port:
+                # If a process using that port just terminated, the connection
+                # can still be in the `conns` list. But a connection attempt
+                # will be refused. We wait for an alive process listening
+                # the port.
+                if conn.pid is None:
+                    break
                 return True
     return False
 
