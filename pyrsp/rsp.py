@@ -116,6 +116,7 @@ class RSP(object):
         # https://sourceware.org/gdb/onlinedocs/gdb/Packet-Acknowledgment.html
         self.ack = True
         self.registers = self.arch['regs']
+        self.maxsize_g_packet = 0
         self.reg_fmt = b"%%0%ux" % (self.arch['bitsize'] >> 2)
         self.__dict__['br'] = {}
         self.__dict__['verbose'] = verbose
@@ -241,7 +242,7 @@ class RSP(object):
             .text segment aka self.elf.workarea"""
         if addr==None:
             addr=self.elf.workarea
-        for pkt in split_by_n(hexlify(data), int(self.feats[b'PacketSize'],16) - 20):
+        for pkt in split_by_n(hexlify(data), self.get_packet_size() - 20):
             pktlen = len(pkt)//2
             self.fetchOK(b'M%x,%x:%s' % (addr, pktlen, pkt))
             addr+=pktlen
@@ -268,6 +269,18 @@ class RSP(object):
         if feats:
             self.feats = dict((ass.split(b'=') if b'=' in ass else (ass,None) for ass in feats.split(b';')))
 
+    def get_packet_size(self):
+        '''Report the maximum packet size.
+
+        Uses the PacketSize feature if it is available otherwise we use a
+        similar heuristic to gdb. Namely we adopt a hardcoded default but
+        if we observe larger g packets we increase that default.
+        '''
+        if self.feats and b'PacketSize' in self.feats:
+            return int(self.feats[b'PacketSize'], 16)
+
+        return max(self.maxsize_g_packet, 400-1);
+
     def __getattr__(self, name):
         if name not in self.__dict__ or not self.__dict__[name]:
             if name=='regs':
@@ -280,7 +293,10 @@ class RSP(object):
         else:
             if name=='feats':
                 self._get_feats()
-                return self.__dict__[name]
+                if name in self.__dict__.keys():
+                    return self.__dict__[name]
+                else:
+                    return {}
             raise AttributeError(name)
 
     def dump(self, size, addr = None):
@@ -290,7 +306,7 @@ class RSP(object):
             addr=self.elf.workarea
         rd = b''
         end = addr + size
-        bsize = int(self.feats[b'PacketSize'], 16) // 2
+        bsize = self.get_packet_size() // 2
         while addr < end:
             bsize = bsize if addr + bsize < end else end - addr
             #print('m%x,%x' % (addr, bsize))
@@ -361,6 +377,10 @@ class RSP(object):
         if self.arch['endian']:
             raw_regs = iter(switch_endian(reg) for reg in raw_regs)
         self.regs = dict(zip(self.registers, raw_regs))
+
+        pktsz = len(enc_reg_blob) + 4   # 4 adds back the header and checksum
+        if pktsz > self.maxsize_g_packet:
+            self.maxsize_g_packet = pktsz
 
     def dump_regs(self):
         """ refreshes and dumps registers via stdout """
