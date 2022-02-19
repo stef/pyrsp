@@ -736,7 +736,7 @@ class CortexM3(RSP):
 
         self.port.setup(self)
 
-        addr=struct.unpack(">I", self.getreg(4, 0x0800000c))[0] - 1
+        addr=struct.unpack(">I", self.getreg(4, 0x0000000c))[0] - 1
         addr = self.reg_fmt % addr
         self.br[addr]={'sym': "FaultHandler", 'addr': addr,
                              'cb': self.checkfault}
