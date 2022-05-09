@@ -125,7 +125,8 @@ def pack(data):
     _sum = 0
     for code in charcodes(data):
         res += UNESCAPE[code]
-        _sum += code
+        for check_byte in UNESCAPE[code]:
+            _sum += check_byte              #the escape character and the XORed byte is part of the checksum
     res += b"#%02x" % (_sum & 0xff)
     return res
 
