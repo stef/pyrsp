@@ -74,7 +74,7 @@ class STlink2(object):
     def __init__(self, port):
         self.__dict__['port'] = socket.socket( socket.AF_INET,socket.SOCK_STREAM)
         self.port.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.port.settimeout(1)
+        self.port.settimeout(0.1)
         self.port.connect(('localhost',int(port)))
         self._buf = b""
 
@@ -129,7 +129,7 @@ class RSP(object):
             print("entry: 0x%x" % self.elf.entry)
 
         # check for signal from running target
-        tmp = self.readpkt(timeout=1)
+        tmp = self.readpkt(timeout=0.1)
         if tmp and verbose: print('helo %s' % s(tmp))
 
         #self.port.write(pack('qSupported:multiprocess+;qRelocInsn+'))
