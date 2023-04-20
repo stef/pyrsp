@@ -69,7 +69,7 @@ class STlink2(object):
     def __init__(self, port):
         self.__dict__['port'] = socket.socket( socket.AF_INET,socket.SOCK_STREAM)
         self.port.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.port.settimeout(1)
+        self.port.settimeout(0.1)
         address = port.split(':')
         self.port.connect(('localhost' if len(address) == 1 else address[0],int(address[-1])))
         self._buf = b""
@@ -125,7 +125,7 @@ class RSP(object):
             print("entry: 0x%x" % self.elf.entry)
 
         # check for signal from running target
-        tmp = self.readpkt(timeout=1)
+        tmp = self.readpkt(timeout=0.1)
         if tmp and verbose: print('helo %s' % s(tmp))
 
         #self.port.write(pack('qSupported:multiprocess+;qRelocInsn+'))
@@ -424,24 +424,30 @@ class RSP(object):
         if self.verbose: print("continuing")
         self.exit = False
         kind, sig, data = stop_reply(self.cont_all())
-        while kind in (b'T', b'S') and sig == 5:
-            # Update current thread for a breakpoint handler.
-            event = stop_event(data)
-            self.stop_event = (kind, sig, event)
-            # If server does not specify a thread explicitly then assume that
-            # current thread has not been changed.
-            # XXX: There is no statement found in the protocol specification
-            # about that aspect. Moreover, it's server implementation
-            # dependent. So, a user must manage threads carefully with respect
-            # to the implementation.
-            if b"thread" in event:
-                self.thread = event[b"thread"]
-            self.handle_br()
-            if self.exit:
-                return
-            # Some threads can be created during the breakpoint handling.
-            # `cont_all` resumes them..
-            kind, sig, data = stop_reply(self.cont_all())
+        while True:
+            if kind == b'O':
+                print(unhexlify(data).decode())
+                kind, sig, data = stop_reply(self.readpkt())
+            elif kind in (b'T', b'S') and sig == 5:
+                # Update current thread for a breakpoint handler.
+                event = stop_event(data)
+                self.stop_event = (kind, sig, event)
+                # If server does not specify a thread explicitly then assume that
+                # current thread has not been changed.
+                # XXX: There is no statement found in the protocol specification
+                # about that aspect. Moreover, it's server implementation
+                # dependent. So, a user must manage threads carefully with respect
+                # to the implementation.
+                if b"thread" in event:
+                    self.thread = event[b"thread"]
+                self.handle_br()
+                if self.exit:
+                    return
+                # Some threads can be created during the breakpoint handling.
+                # `cont_all` resumes them..
+                kind, sig, data = stop_reply(self.cont_all())
+            else:
+                break
 
         if kind == b'W': # The process exited, getting values is impossible
             return
