@@ -38,11 +38,6 @@ from six.moves import range
 def Debugger(*args, **kwargs):
     if os.path.exists(args[0]):
         return BlackMagic(*args,**kwargs)
-    try:
-        int(args[0])
-    except:
-        print("cannot access %s" % args[0])
-        sys.exit(0)
     return STlink2(*args, **kwargs)
 
 class BlackMagic(object):
@@ -75,7 +70,8 @@ class STlink2(object):
         self.__dict__['port'] = socket.socket( socket.AF_INET,socket.SOCK_STREAM)
         self.port.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.port.settimeout(1)
-        self.port.connect(('localhost',int(port)))
+        address = port.split(':')
+        self.port.connect(('localhost' if len(address) == 1 else address[0],int(address[-1])))
         self._buf = b""
 
     def setup(self, rsp):
