@@ -45,14 +45,7 @@ class BlackMagic(object):
         self.__dict__['port'] = serial.Serial(port, 115200, timeout=1)
 
     def setup(self, rsp):
-        rsp.send(b'qRcmd,737764705f7363616e')
-        pkt=rsp.readpkt()
-        while pkt!=b'OK':
-            if pkt[:1]!=b'O':
-                raise ValueError('not O: %s' % pkt)
-            if rsp.verbose:
-                print(unhex(pkt[1:-1]))
-            pkt=rsp.readpkt()
+        rsp.command(b'swdp_scan')
         rsp.fetchOK(b'vAttach;1',b'T05')
 
     def write(self, data):
@@ -667,6 +660,16 @@ class RSP(object):
             raise NotImplementedError(
                 "Getting of argument #%d is not implemented" % n)
         return self.regs[reg_name]
+
+    def command(self, command):
+        self.send(b'qRcmd,' + hexlify(command))
+        pkt = self.readpkt()
+        while pkt != b'OK':
+            if pkt[:1] != b'O':
+                raise ValueError('not O: %s' % pkt)
+            if self.verbose:
+                print(unhex(pkt[1:-1]))
+            pkt = self.readpkt()
 
 from .cortexhwregs import *
 class CortexM3(RSP):
