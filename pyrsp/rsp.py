@@ -45,15 +45,10 @@ class BlackMagic(object):
         self.__dict__['port'] = serial.Serial(port, 115200, timeout=1)
 
     def setup(self, rsp):
-        rsp.send(b'qRcmd,737764705f7363616e')
-        pkt=rsp.readpkt()
-        while pkt!=b'OK':
-            if pkt[:1]!=b'O':
-                raise ValueError('not O: %s' % pkt)
-            if rsp.verbose:
-                print(unhex(pkt[1:-1]))
-            pkt=rsp.readpkt()
+        rsp.command(b'swdp_scan')
         rsp.fetchOK(b'vAttach;1',b'T05')
+        if isinstance(rsp, CortexM3):
+            rsp.command(b'vector_catch enable hard int bus stat chk nocp mm reset')
 
     def write(self, data):
         return self.port.write(data)
@@ -668,6 +663,16 @@ class RSP(object):
                 "Getting of argument #%d is not implemented" % n)
         return self.regs[reg_name]
 
+    def command(self, command):
+        self.send(b'qRcmd,' + hexlify(command))
+        pkt = self.readpkt()
+        while pkt != b'OK':
+            if pkt[:1] != b'O':
+                raise ValueError('not O: %s' % pkt)
+            if self.verbose:
+                print(unhex(pkt[1:-1]))
+            pkt = self.readpkt()
+
 from .cortexhwregs import *
 class CortexM3(RSP):
     def __init__(self, *args,**kwargs):
@@ -746,16 +751,6 @@ class CortexM3(RSP):
         if tmp== b'OK':
             if self.verbose: print("set break: @%s (0x%s) %s" % ('FaultHandler', s(addr), s(tmp)))
             return
-
-        # vector_catch enable hard int bus stat chk nocp mm reset
-        self.send(b'qRcmd,766563746f725f636174636820656e61626c65206861726420696e742062757320737461742063686b206e6f6370206d6d207265736574')
-        pkt=self.readpkt()
-        while pkt!=b'OK':
-            if pkt[:1]!=b'O':
-                raise ValueError('not O: %s' % s(pkt))
-            if self.verbose:
-                print(unhex(pkt[1:-1]))
-            pkt=self.readpkt()
 
     call_regs = ("r0", "r1", "r2", "r3")
 
